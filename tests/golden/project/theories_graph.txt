@@ -1,0 +1,7 @@
+Core.A
+  -> Main
+  -> Core.B
+Core.B
+  -> HOL-Library.Multiset
+App-Main.C
+  -> Core.A

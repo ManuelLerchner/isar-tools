@@ -1,0 +1,7 @@
+Sessions
+session   parent  chapter   theories  directory  ROOT
+--------  ------  --------  --------  ---------  ---------
+Core      HOL     Demo             2  core       core/ROOT
+App-Main  Core    Unsorted         1  app        app/ROOT
+Again     Core    Unsorted         0  app        app/ROOT
+Bare              Unsorted         0  app        app/ROOT

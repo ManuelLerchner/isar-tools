@@ -9,6 +9,7 @@ import csv
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO, TypeAlias
 
 Cell: TypeAlias = str | int | float | bool
@@ -27,6 +28,15 @@ class Table:
     title: str
     columns: Sequence[Column]
     rows: Sequence[dict[str, Cell]]
+
+
+def display_path(path: Path) -> str:
+    """``path`` relative to the working directory if below it, else absolute,
+    with ``/`` separators on every platform so output is stable."""
+    try:
+        return path.relative_to(Path.cwd()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _cell(value: Cell) -> str:

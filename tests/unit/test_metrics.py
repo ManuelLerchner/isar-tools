@@ -1,9 +1,8 @@
-from isar_tools.source.theory import parse_theory
+from isar_tools.source.theory import goal_name, parse_theory
 from isar_tools.stats.metrics import (
     LineClass,
     ProofStats,
     classify_lines,
-    goal_name,
     line_count,
     theory_stats,
 )

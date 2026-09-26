@@ -9,15 +9,17 @@ prover:
 - An import ``S.T`` names theory ``T`` of session ``S``. An unqualified import
   is first a path relative to the importing file's directory, then a theory of
   the importing session.
-- Sessions outside the project (``HOL``, AFP entries not scanned, ...) are
-  external: their theories resolve to nothing and are not an error.
+- Sessions of included directories (``isabelle build -d``) resolve imports and
+  keywords but are not checked. Sessions found nowhere (``HOL``, ...) resolve
+  to nothing, which is not an error.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.project.root import Diagnostic, RootFile, RootSession, read_root
+from isar_tools.source.files import read_source
 from isar_tools.source.keywords import BUILTIN_COMMANDS, CommandKind
 from isar_tools.source.theory import Header, Name, keyword_table, read_header
 
@@ -26,10 +28,16 @@ SKIP_DIRS = frozenset({".git", ".hg", ".svn", ".pixi", "node_modules", "__pycach
 
 @dataclass(frozen=True)
 class Problem:
-    """A project-level finding at a file position (1-based line, 0 if none)."""
+    """A project-level finding at a 1-based file position.
+
+    ``code`` is a stable identifier: ``root-syntax``, ``duplicate-session``,
+    or ``missing-theory``.
+    """
 
     path: Path
     line: int
+    column: int
+    code: str
     message: str
 
 
@@ -41,6 +49,9 @@ class Session:
     search_dirs: list[Path]
     # theory name -> file, for every entry and import this session resolves
     theories: dict[str, Path] = field(default_factory=dict[str, Path])
+    # From an included directory (`-d`): used to resolve imports and keywords,
+    # never checked or reported.
+    external: bool = False
 
     @property
     def name(self) -> str:
@@ -64,7 +75,7 @@ def split_qualified(name: str) -> tuple[str, str]:
 
 def _read_roots_file(path: Path) -> list[str]:
     lines: list[str] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in read_source(path).splitlines():
         line = raw.split("#", 1)[0].strip()
         if line:
             lines.append(line)
@@ -115,29 +126,50 @@ class Project:
     )
 
     @classmethod
-    def load(cls, directory: Path) -> "Project":
-        roots = [read_root(p) for p in discover_roots(directory)]
-        return cls.from_roots(directory.resolve(), roots)
+    def load(cls, directory: Path, include: Sequence[Path] = ()) -> "Project":
+        """The project in ``directory``. Sessions in the ``include`` directories
+        (like ``isabelle build -d``) resolve imports but are not part of it."""
+        own = discover_roots(directory)
+        extra = [p for d in include for p in discover_roots(d) if p not in own]
+        return cls.from_roots(
+            directory.resolve(),
+            [read_root(p) for p in own],
+            [read_root(p) for p in dict.fromkeys(extra)],
+        )
 
     @classmethod
-    def from_roots(cls, directory: Path, roots: list[RootFile]) -> "Project":
+    def from_roots(
+        cls, directory: Path, roots: list[RootFile], external: Sequence[RootFile] = ()
+    ) -> "Project":
         problems: list[Problem] = []
         sessions: dict[str, Session] = {}
-        for root in roots:
+        external_ids = {id(root) for root in external}
+        for root in [*roots, *external]:
             assert root.path is not None
-            problems += [_problem(root, d) for d in root.diagnostics]
+            is_external = id(root) in external_ids
+            if not is_external:
+                problems += [_problem(root, d, "root-syntax") for d in root.diagnostics]
             for spec in root.sessions:
                 base = root.path.parent.resolve()
                 session_dir = base / spec.dir.text if spec.dir is not None else base
                 search = [session_dir] + [session_dir / d.text for d in spec.directories]
                 if spec.name.text in sessions:
-                    msg = f"duplicate session {spec.name.text}"
-                    problems.append(_problem(root, Diagnostic(msg, spec.name.start)))
+                    if not is_external:
+                        msg = f"duplicate session {spec.name.text}"
+                        diagnostic = Diagnostic(msg, spec.name.start)
+                        problems.append(_problem(root, diagnostic, "duplicate-session"))
                     continue
-                sessions[spec.name.text] = Session(spec, root, session_dir, search)
+                sessions[spec.name.text] = Session(
+                    spec, root, session_dir, search, external=is_external
+                )
         project = cls(directory, roots, sessions, problems)
         project._resolve()
         return project
+
+    @property
+    def own_sessions(self) -> list[Session]:
+        """Sessions of the project itself, without included ones."""
+        return [s for s in self.sessions.values() if not s.external]
 
     # --- resolution -----------------------------------------------------------
 
@@ -175,7 +207,10 @@ class Project:
         return None
 
     def _resolve(self) -> None:
-        for session in self.sessions.values():
+        # Included sessions first, so a library theory belongs to its library
+        # even when a project theory imports it.
+        ordered = sorted(self.sessions.values(), key=lambda s: not s.external)
+        for session in ordered:
             for entry in session.spec.theories:
                 text = entry.name.text
                 if split_qualified(text)[0]:
@@ -190,8 +225,9 @@ class Project:
                     )
                 else:
                     session.theories[Path(text).name] = path
+                    self._owners.setdefault(path, session)
         # Imports pull further theories into the session that reaches them first.
-        for session in self.sessions.values():
+        for session in ordered:
             for path in self.closure(list(session.theories.values()), session):
                 owner = self._owners.setdefault(path, session)
                 if owner is session:
@@ -208,7 +244,10 @@ class Project:
                     )
 
     def _entry_problem(self, session: Session, name: Name, message: str) -> None:
-        self.problems.append(_problem(session.root, Diagnostic(message, name.start)))
+        if session.external:
+            return
+        diagnostic = Diagnostic(message, name.start)
+        self.problems.append(_problem(session.root, diagnostic, "missing-theory"))
 
     def closure(self, start: Iterable[Path], session: Session | None) -> Iterator[Path]:
         """``start`` and every project theory reachable through imports."""
@@ -234,9 +273,14 @@ class Project:
     def session_of(self, path: Path) -> Session | None:
         return self._owners.get(path.resolve())
 
+    def owned_theories(self, session: Session) -> dict[str, Path]:
+        """Theories that belong to ``session``: the ones it lists or reaches
+        first. A theory listed by two sessions belongs to the first."""
+        return {n: p for n, p in session.theories.items() if self._owners.get(p) is session}
+
     def theory_files(self) -> list[Path]:
-        """Every theory some session reaches, grouped by session."""
-        return list(dict.fromkeys(p for s in self.sessions.values() for p in s.theories.values()))
+        """Every theory some session of the project reaches, grouped by session."""
+        return list(dict.fromkeys(p for s in self.own_sessions for p in s.theories.values()))
 
     def unreached(self) -> list[tuple[Session, Path]]:
         """``.thy`` files on a session's search path that no session reaches.
@@ -246,7 +290,7 @@ class Project:
         session_dirs = {s.dir for s in self.sessions.values()}
         found: list[tuple[Session, Path]] = []
         seen: set[Path] = set()
-        for session in self.sessions.values():
+        for session in self.own_sessions:
             for d in session.search_dirs:
                 if not d.is_dir():
                     continue
@@ -293,6 +337,8 @@ class Project:
         return table, complete
 
 
-def _problem(root: RootFile, diagnostic: Diagnostic) -> Problem:
+def _problem(root: RootFile, diagnostic: Diagnostic, code: str) -> Problem:
     assert root.path is not None
-    return Problem(root.path, root.lines.line(diagnostic.start), diagnostic.message)
+    line = root.lines.line(diagnostic.start)
+    column = root.lines.column(diagnostic.start)
+    return Problem(root.path, line, column, code, diagnostic.message)

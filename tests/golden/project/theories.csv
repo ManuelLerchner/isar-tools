@@ -1,0 +1,4 @@
+session,theory,imports,path
+Core,A,Main B,core/A.thy
+Core,B,HOL-Library.Multiset,core/B.thy
+App-Main,C,Core.A,app/C.thy

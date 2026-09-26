@@ -1,0 +1,9 @@
+digraph isabelle {
+  "Core.A";
+  "Core.B";
+  "App-Main.C";
+  "Core.A" -> "Main";
+  "Core.A" -> "Core.B";
+  "Core.B" -> "HOL-Library.Multiset";
+  "App-Main.C" -> "Core.A";
+}

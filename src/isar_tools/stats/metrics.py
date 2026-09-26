@@ -21,7 +21,7 @@ from enum import Enum
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import LAYOUT, Kind, Token
 from isar_tools.source.symbols import symbol_length
-from isar_tools.source.theory import COMMENT_MARKERS, Command, Theory, significant, unquote
+from isar_tools.source.theory import COMMENT_MARKERS, Theory, goal_name, significant
 
 UNFINISHED = frozenset({"sorry", "oops", "\\<proof>"})
 
@@ -108,21 +108,6 @@ def _line_owners(theory: Theory, classes: dict[int, LineClass]) -> dict[int, int
                 if classes.get(line) is LineClass.CODE:
                     owners.setdefault(line, index)
     return owners
-
-
-def goal_name(theory: Theory, command: Command) -> str:
-    """The binding of a goal statement: ``foo`` in ``lemma foo[simp]: ...``."""
-    toks = list(significant(command.tokens(theory.tokens)))[1:]
-    if toks and toks[0].text == "(":  # target, as in `lemma (in loc) ...`
-        depth = 0
-        while toks:
-            tok = toks.pop(0)
-            depth += {"(": 1, ")": -1}.get(tok.text, 0)
-            if depth == 0:
-                break
-    if len(toks) >= 2 and toks[0].kind in (Kind.WORD, Kind.STRING) and toks[1].text in (":", "["):
-        return unquote(toks[0])
-    return ""
 
 
 def theory_stats(
