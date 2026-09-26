@@ -11,6 +11,7 @@ from pathlib import Path
 
 from isar_tools.source.keywords import (
     BUILTIN_COMMANDS,
+    KIND_NAMES,
     PROOF_GOALS,
     PROOF_KINDS,
     PROOF_TERMINATORS,
@@ -140,7 +141,7 @@ def _parse_keyword_decls(toks: list[Token], i: int) -> tuple[list[KeywordDecl], 
             i += 1
         elif tok.text == "::" and i + 1 < n:
             kind_text = unquote(toks[i + 1])
-            kind = CommandKind(kind_text) if kind_text in CommandKind else None
+            kind = CommandKind(kind_text) if kind_text in KIND_NAMES else None
             decls += [KeywordDecl(unquote(t), kind, t.start) for t in pending]
             pending = []
             i += 2

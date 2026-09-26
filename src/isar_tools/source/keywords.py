@@ -50,6 +50,8 @@ class CommandKind(StrEnum):
 
 
 K = CommandKind
+# `str in CommandKind` raises TypeError before Python 3.12.
+KIND_NAMES = frozenset(kind.value for kind in CommandKind)
 
 # Theory-level commands that state a goal needing a proof.
 THEORY_GOALS = frozenset({K.THY_GOAL, K.THY_GOAL_DEFN, K.THY_GOAL_STMT})
