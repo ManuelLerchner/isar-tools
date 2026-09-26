@@ -1,0 +1,43 @@
+[workspace]
+name = "isar-tools"
+channels = ["conda-forge"]
+exclude-newer = "7d"
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+python = ">=3.11"
+hatchling = ">=1.25"
+pytest = "*"
+pytest-cov = "*"
+hypothesis = "*"
+
+[pypi-dependencies]
+isar-tools = { path = ".", editable = true }
+
+[tasks]
+test = { cmd = "pytest", description = "Run the test suite." }
+coverage = { cmd = "pytest --cov --cov-report=term-missing --cov-fail-under=100", description = "Run the test suite and require full line and branch coverage." }
+isar = { cmd = "isar", description = "Run the isar CLI from the working tree." }
+
+[feature.lint.dependencies]
+lefthook = "*"
+ruff = "*"
+pyright = "*"
+prettier = "*"
+taplo = "*"
+pre-commit-hooks = "*"
+typos = "*"
+zizmor = "*"
+
+[feature.lint.tasks]
+pre-commit-install = { cmd = "lefthook install", description = "Install the git hooks." }
+lint = { cmd = "lefthook run pre-commit --all-files --force", description = "Run every linter and formatter check over the repository." }
+typecheck = { cmd = "pyright", description = "Type-check sources and tests in strict mode." }
+
+# Tests the `requires-python` floor from pyproject.toml.
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[environments]
+default = ["lint"]
+py311 = ["py311"]

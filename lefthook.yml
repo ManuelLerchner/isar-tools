@@ -1,0 +1,28 @@
+# Git runs hooks outside the pixi environment, so every tool goes through
+# `pixi run`. `--frozen` keeps a hook from re-solving or rewriting pixi.lock.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: ruff-check
+      glob: "*.py"
+      run: pixi run --frozen ruff check --fix --exit-non-zero-on-fix {staged_files}
+    - name: ruff-format
+      glob: "*.py"
+      run: pixi run --frozen ruff format --check {staged_files}
+    - name: taplo
+      glob: "*.toml"
+      run: pixi run --frozen taplo fmt --check {staged_files}
+    - name: prettier
+      glob: "*.{md,yml,yaml,json}"
+      run: pixi run --frozen prettier --write --check {staged_files}
+    - name: typos
+      run: pixi run --frozen typos {staged_files}
+    - name: zizmor
+      glob: ".github/workflows/*.yml"
+      run: pixi run --frozen zizmor --offline {staged_files}
+    - name: trailing-whitespace
+      run: pixi run --frozen trailing-whitespace-fixer {staged_files}
+    - name: end-of-file
+      run: pixi run --frozen end-of-file-fixer {staged_files}
+    - name: check-merge-conflict
+      run: pixi run --frozen check-merge-conflict {staged_files}
