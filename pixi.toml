@@ -19,6 +19,14 @@ test = { cmd = "pytest", description = "Run the test suite." }
 coverage = { cmd = "pytest --cov --cov-report=term-missing --cov-fail-under=100", description = "Run the test suite and require full line and branch coverage." }
 isar = { cmd = "isar", description = "Run the isar CLI from the working tree." }
 
+[feature.build.dependencies]
+python-build = "*"
+twine = ">=6"
+
+[feature.build.tasks]
+build-wheel = { cmd = "python -m build --no-isolation .", description = "Build the PyPI wheel and source distribution." }
+check-wheel = { cmd = "twine check dist/*", description = "Validate built Python distributions." }
+
 [feature.lint.dependencies]
 lefthook = "*"
 ruff = "*"
@@ -34,10 +42,9 @@ pre-commit-install = { cmd = "lefthook install", description = "Install the git 
 lint = { cmd = "lefthook run pre-commit --all-files --force", description = "Run every linter and formatter check over the repository." }
 typecheck = { cmd = "pyright", description = "Type-check sources and tests in strict mode." }
 
-# Tests the `requires-python` floor from pyproject.toml.
 [feature.py311.dependencies]
 python = "3.11.*"
 
 [environments]
-default = ["lint"]
+default = ["lint", "build"]
 py311 = ["py311"]
