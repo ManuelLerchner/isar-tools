@@ -1,0 +1,6 @@
+[files]
+extend-exclude = ["*.thy", "ROOT", "ROOTS", "pixi.lock"]
+
+[default.extend-words]
+# Isabelle's `thm` command and antiquotation.
+thm = "thm"

@@ -160,6 +160,26 @@ unverified.
 4. Checks that need imports can use either our lexer (header tokens, with positions) or
    `isabelle_layout.parse_thy_imports` (names only).
 
+### Revision after implementation (M1)
+
+Point 1 was reversed: isar-tools parses ROOT files itself (`project/root.py`) on the shared
+lexer, and does not depend on isabelle-layout. Reasons:
+
+- The adapter would have had to re-lex every ROOT anyway to supply positions and to detect
+  the silent truncation and `'`-dropping cases, so it would duplicate the parser it wraps.
+- With the shared lexer, an unquoted `HOL-Library` or `Common/Foo` is several tokens, exactly
+  as in Isabelle, so the parser reports it instead of accepting or mangling it.
+- One fewer dependency keeps the conda-forge path to a single `noarch: python` package.
+
+Evidence: the parser reads all 1027 AFP ROOTs reached through `ROOTS` and all 28 Voblint ROOTs
+with no diagnostics, finds 1057 AFP sessions (isabelle-layout: 1057), and the project model
+reaches 10342 AFP theories (isabelle-layout's closure: 10344; not yet reconciled). The opt-in
+corpus tests (`tests/corpus`) keep this checked.
+
+The same run corrected a Voblint assumption: quoted slash entries such as
+`"Common/List_Misc"` are valid (911 of them in the AFP). Only the unquoted spelling fails,
+because it is several tokens.
+
 ## Open questions
 
 - Do either package's results agree with real Isabelle (`isabelle sessions`,

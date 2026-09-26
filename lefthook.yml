@@ -15,6 +15,7 @@ pre-commit:
     - name: prettier
       glob: "*.{md,yml,yaml,json}"
       run: pixi run --frozen prettier --write --check {staged_files}
+      stage_fixed: true
     - name: typos
       run: pixi run --frozen typos {staged_files}
     - name: zizmor
