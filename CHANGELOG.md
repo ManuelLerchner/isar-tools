@@ -6,6 +6,8 @@
   command segmentation with per-theory keyword tables, and goal blocks.
 - Project model: ROOT parser with positioned diagnostics, `ROOTS` discovery, theory and
   import resolution, reachability.
+- `isar stats` with views `summary`, `sessions`, `theories`, `proofs`, `commands`, and
+  `style`, in text, Markdown, JSON, and CSV.
 - Opt-in corpus tests (`pixi run corpus` with `ISAR_CORPUS`).
 - Repository scaffold: pixi environment, package skeleton, `isar` CLI with
   placeholder commands, tests, lint, type checking, and CI.

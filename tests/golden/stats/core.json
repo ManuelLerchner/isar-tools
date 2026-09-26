@@ -1,0 +1,34 @@
+{
+  "theories": [
+    {
+      "session": "Core",
+      "theory": "Big",
+      "lines": 19,
+      "code_lines": 14,
+      "doc_lines": 1,
+      "blank_lines": 4,
+      "definitions": 0,
+      "proofs": 2,
+      "mean_proof": 4.0,
+      "max_proof": 7,
+      "long_lines": 0,
+      "unfinished": 1,
+      "path": "Core/Big.thy"
+    },
+    {
+      "session": "Core",
+      "theory": "Basics",
+      "lines": 8,
+      "code_lines": 5,
+      "doc_lines": 0,
+      "blank_lines": 3,
+      "definitions": 1,
+      "proofs": 1,
+      "mean_proof": 1.0,
+      "max_proof": 1,
+      "long_lines": 0,
+      "unfinished": 0,
+      "path": "Core/Basics.thy"
+    }
+  ]
+}

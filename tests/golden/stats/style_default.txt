@@ -1,0 +1,4 @@
+Style watchlist (theories over 1500 lines, long lines, unfinished proofs, watched methods)
+session  theory  lines  too long  long lines  unfinished  methods  path
+-------  ------  -----  --------  ----------  ----------  -------  ------------
+Core     Big        19  no                 0           1  metis=1  Core/Big.thy

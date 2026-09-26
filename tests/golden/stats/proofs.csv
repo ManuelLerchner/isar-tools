@@ -1,0 +1,5 @@
+session,theory,name,line,command,statement_lines,proof_lines,lines,closed,unfinished,path
+Core,Big,long_proof,5,lemma,3,7,10,True,,Core/Big.thy
+Core,Basics,double_simp,5,lemma,1,1,2,True,,Core/Basics.thy
+Core,Big,gap,16,lemma,1,1,2,True,sorry,Core/Big.thy
+Core-Apps,App,f_zero,5,lemma,1,0,1,True,,Apps/App.thy

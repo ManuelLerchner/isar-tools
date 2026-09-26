@@ -4,7 +4,7 @@ from importlib.metadata import version
 
 import pytest
 
-from isar_tools.cli import COMMANDS, EXIT_USAGE, main
+from isar_tools.cli import EXIT_USAGE, PLACEHOLDERS, main
 
 
 def test_no_command_prints_help_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
@@ -14,7 +14,7 @@ def test_no_command_prints_help_to_stderr(capsys: pytest.CaptureFixture[str]) ->
     assert "usage: isar" in err
 
 
-@pytest.mark.parametrize("command", sorted(COMMANDS))
+@pytest.mark.parametrize("command", sorted(PLACEHOLDERS))
 def test_placeholder_commands_fail_with_usage_status(
     command: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
