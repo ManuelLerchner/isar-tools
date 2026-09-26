@@ -58,11 +58,12 @@ class Entry:
 
 
 def display_path(path: Path) -> str:
-    """``path`` relative to the working directory if below it, else absolute."""
+    """``path`` relative to the working directory if below it, else absolute,
+    with ``/`` separators on every platform so output is stable."""
     try:
-        return str(path.relative_to(Path.cwd()))
+        return path.relative_to(Path.cwd()).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def _mean(xs: Sequence[int]) -> float:

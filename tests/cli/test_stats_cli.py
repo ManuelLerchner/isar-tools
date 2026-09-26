@@ -127,7 +127,7 @@ def test_paths_outside_cwd_are_absolute(
     (elsewhere / "X.thy").write_text("theory X imports Main begin end", encoding="utf-8")
     assert main(["stats", "theories", str(elsewhere), "--format", "json"]) == 0
     row = json.loads(capsys.readouterr().out)["theories"][0]
-    assert row["path"] == str((elsewhere / "X.thy").resolve())
+    assert row["path"] == (elsewhere / "X.thy").resolve().as_posix()
     assert row["session"] == "-"
 
 
