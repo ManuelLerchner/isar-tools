@@ -18,6 +18,7 @@ isar-tools = { path = ".", editable = true }
 test = { cmd = "pytest", description = "Run the test suite." }
 coverage = { cmd = "pytest --cov --cov-report=term-missing --cov-fail-under=100", description = "Run the test suite and require full line and branch coverage." }
 isar = { cmd = "isar", description = "Run the isar CLI from the working tree." }
+demo-check = { cmd = "python scripts/check_demo.py", description = "Run the commands of docs/demo/demo.tape without recording and check their exit status." }
 corpus = { cmd = "pytest tests/corpus", description = "Run the corpus integration tests over the projects listed in ISAR_CORPUS." }
 
 [feature.build.dependencies]

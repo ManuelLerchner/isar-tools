@@ -50,7 +50,7 @@ skip_covered = true
 exclude_also = ["if TYPE_CHECKING:"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 

@@ -6,7 +6,8 @@
   findings on a terminal; `fmt --diff` and `symbols normalize --diff` colour their diffs.
   `--color auto|always|never`; `NO_COLOR` is honoured. Finding messages are shorter.
 - README demo GIF recorded by VHS from `docs/demo/demo.tape` (`pixi run demo`, in a
-  separate `demo` environment).
+  separate `demo` environment). It shows `isar fmt --diff`; `pixi run demo-check` runs the
+  tape's commands without recording and checks their exit status.
 - Source model: lossless outer-syntax lexer, Isabelle symbol table, theory headers,
   command segmentation with per-theory keyword tables, and goal blocks.
 - Project model: ROOT parser with positioned diagnostics, `ROOTS` discovery, theory and
