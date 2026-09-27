@@ -47,7 +47,6 @@ schema_version: 1
 
 context:
   version: "X.Y.Z"
-  python_min: "3.11"
 
 package:
   name: isar-tools
