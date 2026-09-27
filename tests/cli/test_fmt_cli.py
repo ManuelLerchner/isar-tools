@@ -20,7 +20,7 @@ def thy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_in_place(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["fmt", "."]) == 0
+    assert main(["fmt"]) == 0
     assert read_source(thy) == PRETTY
     assert capsys.readouterr().err == "formatted T.thy\n"
     assert main(["fmt", "."]) == 0

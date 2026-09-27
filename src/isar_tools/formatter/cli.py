@@ -20,7 +20,13 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "whitespace, blank lines, and, with --max-line-length, line breaks at spaces between "
         "tokens. `-` reads standard input and writes standard output.",
     )
-    fmt.add_argument("paths", nargs="+", type=Path, help=".thy files or directories, or -")
+    fmt.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        default=[Path()],
+        help=".thy files or directories (default: the current directory), or -",
+    )
     mode = fmt.add_mutually_exclusive_group()
     mode.add_argument(
         "--check", action="store_true", help="only list files that would change; exit 1 if any"
