@@ -7,6 +7,11 @@
   name must identify exactly one declaration. `--manifest TOML --out DIR --write|--check`
   keeps quoted declarations in a document in sync with the theories (the format of
   Voblint's `thesis/shared/snippets.toml`).
+- `isar check docs`: opt-in documentation-coverage group, ported from Voblint's
+  `extract_definitions.py --lint`. `undocumented-theory` (no `text` before the first
+  declaration), `undocumented-heading` (no `text` right after or before a heading),
+  `undocumented-locale` and `undocumented-class` (no `text` right before the declaration).
+  `(* *)` comments, formal comments, and `text_raw` do not count as documentation.
 - `isar project hierarchy`: class and locale declarations (parents, fixes with type and
   notation, assumes, parameter sorts) as text, JSON, or DOT; `--root` follows parents
   through imports, including `-d` directories, and reports unresolved names.

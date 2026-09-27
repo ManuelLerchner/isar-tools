@@ -41,7 +41,11 @@ CODES: dict[str, tuple[str, str]] = {
     "lexical-error": ("syntax", "an unterminated comment, string, cartouche, or verbatim"),
     "document-argument": ("syntax", "a document command without exactly one text argument"),
     "non-ascii": ("symbols", "a non-ASCII character outside (* *) comments"),
+    "undocumented-theory": ("docs", "no text block before a theory's first declaration"),
+    "undocumented-heading": ("docs", "a heading with no text block right after or before it"),
+    "undocumented-locale": ("docs", "a locale with no text block right before it"),
+    "undocumented-class": ("docs", "a type class with no text block right before it"),
 }
 
-GROUPS = ("project", "proofs", "syntax", "symbols")
+GROUPS = ("project", "proofs", "syntax", "symbols", "docs")
 DEFAULT_GROUPS = ("project", "proofs", "syntax")
