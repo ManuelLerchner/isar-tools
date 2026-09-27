@@ -1,0 +1,8 @@
+digraph hierarchy {
+  node [shape=box];
+  "evaluator" [label="evaluator", style=dashed];
+  "lattice" [label="lattice"];
+  "numeric" [label="numeric"];
+  "evaluator" -> "numeric" [style=dashed];
+  "numeric" -> "lattice" [arrowhead=empty];
+}

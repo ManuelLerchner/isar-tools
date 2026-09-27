@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `isar project hierarchy`: class and locale declarations (parents, fixes with type and
+  notation, assumes, parameter sorts) as text, JSON, or DOT; `--root` follows parents
+  through imports, including `-d` directories, and reports unresolved names.
+- Unqualified imports of global theory names (`Main`) resolve through the parent
+  session chain.
 - `isar stats build BUILD_LOG`: where theory elaboration time went in an `isabelle build -v`
   log. Per building session: theories elaborated, cpu seconds, and the share spent on
   theories owned by other sessions; theories elaborated more than once with the time

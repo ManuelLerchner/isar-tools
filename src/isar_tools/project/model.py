@@ -202,8 +202,19 @@ class Project:
         candidate = (importer.parent / f"{name}.thy").resolve()
         if candidate.is_file():
             return candidate
-        if session is not None:
-            return session.theories.get(Path(name).name) or self._entry_file(session, name)
+        if session is None:
+            return None
+        found = session.theories.get(Path(name).name) or self._entry_file(session, name)
+        if found is not None or "/" in name:
+            return found
+        # A global theory name such as `Main` comes from an ancestor session.
+        seen = {session.name}
+        ancestor = self.sessions.get(session.parent or "")
+        while ancestor is not None and ancestor.name not in seen:
+            seen.add(ancestor.name)
+            if name in ancestor.theories:
+                return ancestor.theories[name]
+            ancestor = self.sessions.get(ancestor.parent or "")
         return None
 
     def _resolve(self) -> None:

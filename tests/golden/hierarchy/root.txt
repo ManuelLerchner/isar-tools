@@ -1,0 +1,7 @@
+locale evaluator  (Own, own/Domain.thy:5)
+  sorts   numeric
+  fixes   eval :: 'd \<Rightarrow> 'a::numeric
+  assumes sound: P
+locale mono_evaluator  (Own, own/Domain.thy:8)
+  extends evaluator
+  assumes mono: Q

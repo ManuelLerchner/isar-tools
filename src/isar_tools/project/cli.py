@@ -5,9 +5,12 @@ import json
 import sys
 from pathlib import Path
 
+from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
 from isar_tools.project.workspace import InputError, add_include_option
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
+from isar_tools.source.files import read_source
+from isar_tools.source.theory import parse_theory
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
@@ -37,6 +40,21 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     graph.add_argument("--theories", action="store_true", help="theory import graph")
     add_include_option(graph)
     graph.set_defaults(func=run_graph)
+    hierarchy = views.add_parser(
+        "hierarchy",
+        help="class and locale declarations: parents, parameters, assumptions",
+        description="Class and locale declarations read from the sources: parents, "
+        "fixes with type and notation, assumes, and parameter sorts. With --root, only "
+        "the named declarations and everything they extend, parents first, including "
+        "declarations in -d directories.",
+    )
+    hierarchy.add_argument("path", nargs="?", type=Path, default=Path(), help="project directory")
+    hierarchy.add_argument(
+        "--root", action="append", default=[], metavar="NAME", help="start here (repeatable)"
+    )
+    hierarchy.add_argument("--format", choices=("text", "json", "dot"), default="text")
+    add_include_option(hierarchy)
+    hierarchy.set_defaults(func=run_hierarchy)
 
 
 def _load(args: argparse.Namespace) -> Project:
@@ -173,4 +191,89 @@ def run_graph(args: argparse.Namespace) -> int:
             print(node)
             for target in targets.get(node, []):
                 print(f"  -> {target}")
+    return 0
+
+
+def _declaration_index(project: Project, external: bool) -> dict[str, list[Located]]:
+    """Declarations by name: the project's, and with ``external`` those of the
+    included sessions too."""
+    index: dict[str, list[Located]] = {}
+    for session in project.sessions.values():
+        if session.external and not external:
+            continue
+        for path in project.owned_theories(session).values():
+            text = read_source(path)
+            if "class" not in text and "locale" not in text:
+                continue  # cheap filter before parsing
+            theory = parse_theory(text, project.keywords_for(path))
+            for decl in declarations(theory, path):
+                located = Located(decl, session.name, session.external)
+                index.setdefault(decl.name, []).append(located)
+    return index
+
+
+def run_hierarchy(args: argparse.Namespace) -> int:
+    project = _load(args)
+    index = _declaration_index(project, external=bool(args.root))
+    if args.root:
+        cache: dict[Path, set[Path]] = {}
+
+        def visible(path: Path) -> set[Path]:
+            if path not in cache:
+                cache[path] = set(project.closure([path], project.session_of(path)))
+            return cache[path]
+
+        found, missing = closure(index, args.root, visible)
+    else:
+        found = sorted(
+            (loc for locs in index.values() for loc in locs),
+            key=lambda loc: (loc.decl.path, loc.decl.line),
+        )
+        missing = []
+    for name in missing:
+        print(f"isar project hierarchy: warning: no class or locale {name}", file=sys.stderr)
+    names = {loc.decl.name for loc in found}
+    if args.format == "json":
+        json.dump(
+            {
+                "declarations": [as_json(loc, display_path(loc.decl.path)) for loc in found],
+                "unresolved": missing,
+            },
+            sys.stdout,
+            indent=2,
+            ensure_ascii=False,
+        )
+        sys.stdout.write("\n")
+    elif args.format == "dot":
+        print("digraph hierarchy {")
+        print("  node [shape=box];")
+        for loc in found:
+            style = ", style=dashed" if loc.decl.kind == "locale" else ""
+            print(f"  {_dot_id(loc.decl.name)} [label={_dot_id(loc.decl.name)}{style}];")
+        for loc in found:
+            decl = loc.decl
+            for parent in extends(loc):
+                if parent in names:
+                    print(f"  {_dot_id(decl.name)} -> {_dot_id(parent)} [arrowhead=empty];")
+            if decl.kind == "locale":
+                for sort in decl.sorts:
+                    if sort in names:
+                        print(f"  {_dot_id(decl.name)} -> {_dot_id(sort)} [style=dashed];")
+        print("}")
+    else:
+        for loc in found:
+            decl = loc.decl
+            where = f"{display_path(decl.path)}:{decl.line}"
+            print(f"{decl.kind} {decl.name}  ({loc.session}, {where})")
+            if decl.parents:
+                print(f"  extends {' + '.join(decl.parents)}")
+            if decl.sorts:
+                print(f"  sorts   {', '.join(decl.sorts)}")
+            for p in decl.fixes:
+                notation = f"  ({p.mixfix})" if p.mixfix else ""
+                typed = f" :: {p.type}" if p.type else ""
+                print(f"  fixes   {p.name}{typed}{notation}")
+            for a in decl.assumes:
+                label = f"{a.name}: " if a.name else ""
+                print(f"  assumes {label}{' '.join(a.props)}")
     return 0
