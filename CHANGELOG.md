@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A directory argument no longer includes the theories of `-d` directories nested
+  in it. An AFP or a vendored submodule inside a project provides sessions to resolve
+  against; `isar check .` reported their `sorry` and `oops`, and `isar fmt .` would
+  have rewritten them.
+
 ## 0.1.0 (2026-09-27)
 
 First release.

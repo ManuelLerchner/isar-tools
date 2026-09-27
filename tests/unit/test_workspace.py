@@ -62,3 +62,28 @@ def test_bad_paths(make_project: MakeProject, name: str, message: str) -> None:
     base = make_project(FILES)
     with pytest.raises(InputError, match=message):
         collect([base / name])
+
+
+def test_included_directories_inside_a_project_are_not_its_files(
+    make_project: MakeProject,
+) -> None:
+    """An AFP or submodule inside the project is passed with -d to resolve
+    against; its theories are not the project's to check or format."""
+    base = make_project(
+        {
+            **FILES,
+            "afp/thys/ROOTS": "E",
+            "afp/thys/E/ROOT": "session E = HOL + theories E",
+            "afp/thys/E/E.thy": "theory E imports Main begin end",
+        }
+    )
+    included = [p.relative_to(base).as_posix() for p in (s.path for s in collect([base]))]
+    assert "afp/thys/E/E.thy" in included
+    sources = collect([base], [base / "afp" / "thys"])
+    assert [s.path.relative_to(base).as_posix() for s in sources] == [
+        "A.thy",
+        "loose/C.thy",
+        "sub/B.thy",
+    ]
+    # A directory that is itself included is still read when named.
+    assert [s.path.name for s in collect([base / "afp"], [base / "afp"])] == ["E.thy"]
