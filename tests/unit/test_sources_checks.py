@@ -60,7 +60,7 @@ def test_hygiene() -> None:
 
 @pytest.mark.parametrize(
     ("name", "reserved"),
-    [("AUX.thy", True), ("com1.thy", True), ("Aux_Lemmas.thy", False), ("a:b.thy", True)],
+    [("AUX.thy", True), ("com1.thy", True), ("Aux_Lemmas.thy", False), ("a|b.thy", True)],
 )
 def test_reserved_file_names(name: str, reserved: bool) -> None:
     found = [f.code for f in check_hygiene(Path(name), "")]

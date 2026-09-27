@@ -163,6 +163,10 @@ def test_new_groups_and_invalid_utf8(
             "B.thy": "",
         }
     )
+    # Bytes, not text: on Windows write_text would add CRs, which hygiene reports.
+    (base / "A.thy").write_bytes(
+        b"theory A imports Main begin\nlemma x: True\n\tsledgehammer\n  by simp\nend\n"
+    )
     (base / "B.thy").write_bytes(b"theory B imports Main begin\n\xff\nend\n")
     monkeypatch.chdir(base)
     assert main(["check", "--format", "json", "."]) == 1
