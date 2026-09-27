@@ -1,0 +1,3 @@
+T.thy:1:1: undocumented-theory: theory has no text block before its first declaration
+T.thy:2:1: undocumented-heading: section 'Setting' has no text block next to it
+T.thy:3:1: undocumented-locale: locale l is not preceded by a text block

@@ -5,6 +5,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
 from isar_tools.checks.project import check_project
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
@@ -33,7 +34,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         dest="groups",
         action="append",
         choices=GROUPS,
-        help="run this group of checks (repeatable; default: all but symbols)",
+        help="run this group of checks (repeatable; default: all but symbols and docs)",
     )
     check.add_argument(
         "--ignore",
@@ -67,7 +68,7 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
     if "project" in groups:
         for project in workspace.projects:
             findings += check_project(project)
-    if groups & {"proofs", "syntax", "symbols"}:
+    if groups & {"proofs", "syntax", "symbols", "docs"}:
         for source in workspace.sources:
             theory = source.parse()
             if "proofs" in groups:
@@ -78,6 +79,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
                 findings += check_symbols(
                     source.path, theory, include_comments=args.include_comments
                 )
+            if "docs" in groups:
+                findings += check_docs(source.path, theory)
     ignored = set(args.ignore)
     return sorted({f for f in findings if f.code not in ignored})
 
@@ -107,7 +110,13 @@ def findings_table(findings: list[Finding]) -> Table:
 
 
 # Colour of a finding's code, by group.
-_GROUP_COLORS = {"project": "magenta", "proofs": "yellow", "syntax": "red", "symbols": "cyan"}
+_GROUP_COLORS = {
+    "project": "magenta",
+    "proofs": "yellow",
+    "syntax": "red",
+    "symbols": "cyan",
+    "docs": "green",
+}
 
 
 def summary(findings: list[Finding]) -> str:

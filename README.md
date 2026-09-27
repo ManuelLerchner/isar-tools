@@ -22,6 +22,19 @@ isar project   Inspect Isabelle project structure
 isar symbols   Inspect or normalize Isabelle symbols
 ```
 
+### Checks
+
+| Group     | Codes                                                                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project` | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
+| `proofs`  | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                              |
+| `syntax`  | `lexical-error`, `document-argument`                                                                                                            |
+| `symbols` | `non-ascii` (opt-in)                                                                                                                            |
+| `docs`    | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                             |
+
+`isar check` runs `project`, `proofs`, and `syntax`; `isar check docs PATH` runs
+the documentation-coverage policy. `isar check --help` describes every code.
+
 Exit status: `0` success, `1` check failure or differences found, `2` invalid
 invocation or unreadable input. Data goes to stdout, diagnostics to stderr.
 
