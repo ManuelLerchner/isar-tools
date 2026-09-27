@@ -174,3 +174,39 @@ def test_split_qualified(name: str, expected: tuple[str, str]) -> None:
 
 def test_problem_is_value(tmp_path: Path) -> None:
     assert Problem(tmp_path, 1, 1, "c", "m") == Problem(tmp_path, 1, 1, "c", "m")
+
+
+@pytest.mark.parametrize("roots", ["examples\ncli\n", "cli\nexamples\n", None])
+def test_ownership_does_not_depend_on_discovery(
+    make_project: MakeProject, roots: str | None
+) -> None:
+    """A theory in CLI's directory, imported by CLI and reached from a child
+    session through a qualified import, belongs to CLI however the ROOT files
+    are found (ROOTS in either order, or searched for)."""
+    files = {
+        "cli/ROOT": "session CLI = HOL + theories Run",
+        "cli/Run.thy": "theory Run imports Diag begin end",
+        "cli/Diag.thy": "theory Diag imports Main begin end",
+        "examples/ROOT": "session Examples = CLI + theories Ex",
+        "examples/Ex.thy": 'theory Ex imports "CLI.Run" begin end',
+    }
+    if roots is not None:
+        files["ROOTS"] = roots
+    base = make_project(files)
+    project = Project.load(base)
+    owner = project.session_of(base / "cli/Diag.thy")
+    assert owner is not None
+    assert owner.name == "CLI"
+    assert sorted(project.owned_theories(project.sessions["Examples"])) == ["Ex"]
+
+
+def test_cyclic_sessions_terminate(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session A = B + theories X\nsession B = A + theories Y",
+            "X.thy": "theory X imports Main begin end",
+            "Y.thy": "theory Y imports Main begin end",
+        }
+    )
+    project = Project.load(base)
+    assert sorted(project.owned_theories(project.sessions["A"])) == ["X"]

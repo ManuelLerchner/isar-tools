@@ -112,3 +112,21 @@ def test_locales_group(
     assert (status, err) == (1, "1 finding: 1 locale-free-variable\n")
     golden("check/locales.txt", out)
     assert run(capsys, "locales", ".", "--allow", "enter_local") == (0, "", "no findings\n")
+
+
+def test_nested_project_is_skipped_with_a_note(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A",
+            "A.thy": "theory A imports Main begin end",
+            "vendor/lib/ROOT": "session L = HOL + theories B",
+            "vendor/lib/B.thy": "theory B imports Main begin lemma x: True sorry end",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["check", "."]) == 0
+    assert "note: skipped vendor/lib: another project" in capsys.readouterr().err
+    assert main(["check", "-d", "vendor/lib", "."]) == 0
+    assert "note" not in capsys.readouterr().err

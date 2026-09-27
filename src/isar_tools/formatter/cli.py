@@ -6,7 +6,7 @@ from pathlib import Path
 
 from isar_tools.formatter.formatter import FormatError, Options
 from isar_tools.formatter.wrap import format_source
-from isar_tools.project.workspace import add_include_option, collect
+from isar_tools.project.workspace import add_include_option, load
 from isar_tools.render import display_path
 from isar_tools.source.files import write_source
 from isar_tools.style import Style, add_color_option, write_diff
@@ -69,7 +69,9 @@ def run(args: argparse.Namespace) -> int:
         return _stdin(options)
     status = 0
     changed = 0
-    for source in collect(args.paths, args.include):
+    workspace = load(args.paths, args.include)
+    workspace.note_skipped("fmt")
+    for source in workspace.sources:
         name = display_path(source.path)
         before = source.read()
         try:

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- A directory argument skips subdirectories that have their own `ROOT` or `ROOTS` but
+  hold none of the project's sessions (a vendored submodule not listed in `ROOTS`), with
+  a note on stderr; pass such a directory with `-d` to resolve against it. Before, its
+  theories were checked, formatted, and counted as loose theories of the project.
+- Theory ownership no longer depends on how the ROOT files were found. Sessions claim
+  theories ancestors first (parents and `sessions` entries before the sessions built on
+  them), and a session never claims a theory from another session's directories through
+  an import. `isar project sessions .` (reading `ROOTS`) and `isar project sessions src`
+  (searching for `ROOT` files) now agree on Voblint, where one theory switched sessions.
+
 ## 0.1.1 (2026-09-27)
 
 - A directory argument no longer includes the theories of `-d` directories nested
