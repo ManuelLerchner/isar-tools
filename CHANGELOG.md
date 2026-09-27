@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `isar project extract NAME...`: the source of a declaration (command and, for a goal,
+  its proof), found by `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`; a
+  name must identify exactly one declaration. `--manifest TOML --out DIR --write|--check`
+  keeps quoted declarations in a document in sync with the theories (the format of
+  Voblint's `thesis/shared/snippets.toml`).
 - `isar project hierarchy`: class and locale declarations (parents, fixes with type and
   notation, assumes, parameter sorts) as text, JSON, or DOT; `--root` follows parents
   through imports, including `-d` directories, and reports unresolved names.

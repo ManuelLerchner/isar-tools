@@ -1,16 +1,20 @@
-"""``isar project``: sessions, theories, and their graph."""
+"""``isar project``: sessions, theories, their graph, and named declarations."""
 
 import argparse
 import json
 import sys
+import tomllib
 from pathlib import Path
+from typing import cast
 
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
+from isar_tools.project.names import Entity, entities, matches, source
 from isar_tools.project.workspace import InputError, add_include_option
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_source, write_source
 from isar_tools.source.theory import parse_theory
+from isar_tools.style import Style, add_color_option, write_diff
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
@@ -55,13 +59,46 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     hierarchy.add_argument("--format", choices=("text", "json", "dot"), default="text")
     add_include_option(hierarchy)
     hierarchy.set_defaults(func=run_hierarchy)
+    extract = views.add_parser(
+        "extract",
+        help="the source of declarations, by name",
+        description="Print the source of named declarations: the command and, for a "
+        "goal, its proof, dedented. NAME is `name`, `locale.name`, `Theory.name`, or "
+        "`Theory.locale.name`, and must name exactly one declaration of the project. "
+        "With --manifest, extract every name listed in a TOML file into --out, one "
+        "NAME.thy each, so quoted source cannot drift from the theories.",
+    )
+    extract.add_argument("names", nargs="*", metavar="NAME")
+    extract.add_argument(
+        "--project", type=Path, default=Path(), metavar="DIR", help="project directory"
+    )
+    extract.add_argument(
+        "--manifest",
+        type=Path,
+        metavar="TOML",
+        help="names to extract: a table [snippets.NAME] per name, with an optional "
+        "`file` (theory path relative to the project) to choose between declarations",
+    )
+    extract.add_argument("--out", type=Path, metavar="DIR", help="directory for --manifest")
+    mode = extract.add_mutually_exclusive_group()
+    mode.add_argument("--write", action="store_true", help="write --out (with --manifest)")
+    mode.add_argument(
+        "--check", action="store_true", help="exit 1 if --out differs (with --manifest)"
+    )
+    extract.add_argument("--format", choices=("text", "json"), default="text")
+    add_include_option(extract)
+    add_color_option(extract)
+    extract.set_defaults(func=run_extract)
 
 
 def _load(args: argparse.Namespace) -> Project:
-    path: Path = args.path
+    return _load_dir(args.path, args.include)
+
+
+def _load_dir(path: Path, include: list[Path]) -> Project:
     if not path.is_dir():
         raise InputError(f"{path.as_posix()}: not a directory")
-    return Project.load(path, args.include)
+    return Project.load(path, include)
 
 
 def sessions_table(project: Project) -> Table:
@@ -277,3 +314,113 @@ def run_hierarchy(args: argparse.Namespace) -> int:
                 label = f"{a.name}: " if a.name else ""
                 print(f"  assumes {label}{' '.join(a.props)}")
     return 0
+
+
+_Found = tuple[Entity, str]  # an entity and its source text
+
+
+def _entities(project: Project) -> list[_Found]:
+    found: list[_Found] = []
+    for session in project.own_sessions:
+        for name, path in project.owned_theories(session).items():
+            theory = parse_theory(read_source(path), project.keywords_for(path))
+            found += [(e, source(theory, e)) for e in entities(theory, name, path)]
+    return found
+
+
+def _lookup(found: list[_Found], name: str, file: Path | None) -> _Found | str:
+    """The one declaration ``name`` refers to, or why there is none."""
+    hits = [f for f in found if matches(f[0], name)]
+    if file is not None:
+        hits = [f for f in hits if f[0].path == file.resolve()]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        return f"{name}: no declaration" + (f" in {file.as_posix()}" if file else "")
+    where = ", ".join(f"{e.qualified} ({display_path(e.path)}:{e.line})" for e, _ in hits)
+    return f"{name}: ambiguous: {where}"
+
+
+def _snippet(entity: Entity, text: str) -> str:
+    return f"(* {display_path(entity.path)} *)\n{text}"
+
+
+def _manifest(path: Path, project: Path) -> dict[str, Path | None]:
+    """Names listed in a manifest, each with the theory file it is pinned to."""
+    try:
+        table = tomllib.loads(read_source(path)).get("snippets", {})
+    except (OSError, ValueError) as err:  # TOMLDecodeError and UnicodeDecodeError
+        raise InputError(f"{path.as_posix()}: {err}") from err
+    if not isinstance(table, dict):
+        raise InputError(f"{path.as_posix()}: [snippets] must be a table")
+    wanted: dict[str, Path | None] = {}
+    for name, meta in sorted(cast(dict[str, object], table).items()):
+        file = cast(dict[str, object], meta).get("file") if isinstance(meta, dict) else None
+        wanted[name] = project / file if isinstance(file, str) else None
+    return wanted
+
+
+def run_extract(args: argparse.Namespace) -> int:
+    if args.manifest is None and (args.out or args.write or args.check):
+        raise InputError("--out, --write, and --check need --manifest")
+    if args.manifest is not None and (args.names or args.out is None):
+        raise InputError("--manifest takes no NAME and needs --out")
+    if args.manifest is not None and not (args.write or args.check):
+        raise InputError("--manifest needs --write or --check")
+    if args.manifest is None and not args.names:
+        raise InputError("give a NAME or --manifest")
+    wanted = (
+        _manifest(args.manifest, args.project)
+        if args.manifest is not None
+        else dict.fromkeys(args.names)
+    )
+    found = _entities(_load_dir(args.project, args.include))
+    results = {name: _lookup(found, name, file) for name, file in wanted.items()}
+    errors = [r for r in results.values() if isinstance(r, str)]
+    for error in errors:
+        print(f"isar project extract: {error}", file=sys.stderr)
+    ok = {name: r for name, r in results.items() if not isinstance(r, str)}
+    if args.manifest is None:
+        if args.format == "json":
+            rows = [
+                {
+                    "name": name,
+                    "qualified": e.qualified,
+                    "kind": e.kind,
+                    "command": e.command,
+                    "path": display_path(e.path),
+                    "line": e.line,
+                    "end_line": e.end_line,
+                    "source": text,
+                }
+                for name, (e, text) in ok.items()
+            ]
+            json.dump(rows, sys.stdout, indent=2, ensure_ascii=False)
+            sys.stdout.write("\n")
+        else:
+            sys.stdout.write("\n".join(_snippet(e, text) for e, text in ok.values()))
+        return 1 if errors else 0
+    return _sync(args, ok) or (1 if errors else 0)
+
+
+def _sync(args: argparse.Namespace, ok: dict[str, _Found]) -> int:
+    """Write or compare the manifest's snippets; 1 if ``--check`` finds drift."""
+    out: Path = args.out
+    style = Style.for_stream(args.color, sys.stdout)
+    stale = 0
+    for name, (entity, text) in ok.items():
+        target = out / f"{name}.thy"
+        snippet = _snippet(entity, text)
+        stored = read_source(target) if target.is_file() else ""
+        if stored == snippet:
+            continue
+        if args.check:
+            stale += 1
+            write_diff(stored, snippet, display_path(target), sys.stdout, style)
+        else:
+            out.mkdir(parents=True, exist_ok=True)
+            write_source(target, snippet)
+            print(f"wrote {display_path(target)}")
+    if stale and args.check:
+        print(f"{stale} snippet(s) differ from the theories", file=sys.stderr)
+    return 1 if stale and args.check else 0

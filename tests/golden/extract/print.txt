@@ -1,0 +1,7 @@
+(* A.thy *)
+definition succ :: "nat \<Rightarrow> nat" where
+  "succ n = n + 1"
+
+(* A.thy *)
+lemma succ_pos: "succ n > 0"
+  unfolding succ_def by simp
