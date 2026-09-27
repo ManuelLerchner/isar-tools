@@ -30,7 +30,7 @@ that instead of printing empty tables.
 
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from isar_tools.render import Cell, Column, Table
@@ -176,8 +176,23 @@ class BudgetResult:
         )
 
 
-def check_budgets(log: BuildLog, budgets: Mapping[str, int]) -> list[BudgetResult]:
-    """Foreign elaborations of each budgeted session's theories, sorted by session."""
+def check_budgets(
+    log: BuildLog,
+    budgets: Mapping[str, int],
+    default: int | None = None,
+    own: Collection[str] = (),
+) -> list[BudgetResult]:
+    """Foreign elaborations of each budgeted session's theories, sorted by session.
+
+    With ``default``, every other session whose theories are elaborated inside
+    other sessions is budgeted too, except the project's ``own`` sessions: a
+    library dependency slipping in fails instead of costing time unnoticed.
+    """
+    budgets = dict(budgets)
+    if default is not None:
+        for e in log.elaborations:
+            if e.foreign and e.owner not in own:
+                budgets.setdefault(e.owner, default)
     results: list[BudgetResult] = []
     for session, budget in sorted(budgets.items()):
         foreign = [e for e in log.elaborations if e.foreign and e.owner == session]

@@ -158,3 +158,29 @@ def test_configuration_file(
     assert main(["stats", "style", "--max-line-length", "100", "--format", "json", "."]) == 0
     (row,) = json.loads(capsys.readouterr().out)["style"]
     assert row["long_lines"] == 0
+
+
+def test_commands_per_theory(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A B",
+            "A.thy": "theory A imports Main begin\n"
+            "lemma x: True by simp\nlemma y: True by simp\nend\n",
+            "B.thy": 'theory B imports A begin\ndefinition c :: nat where "c = 0"\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["stats", "commands", "--by", "theory", "--format", "json", "."]) == 0
+    rows = json.loads(capsys.readouterr().out)["commands"]
+    assert {(r["theory"], r["command"]): r["count"] for r in rows} == {
+        ("A", "lemma"): 2,
+        ("A", "by"): 2,
+        ("A", "theory"): 1,
+        ("A", "end"): 1,
+        ("B", "definition"): 1,
+        ("B", "theory"): 1,
+        ("B", "end"): 1,
+    }
+    assert rows[0] == {"session": "S", "theory": "A", "command": "by", "count": 2, "path": "A.thy"}

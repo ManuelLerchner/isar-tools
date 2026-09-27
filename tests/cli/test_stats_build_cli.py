@@ -168,3 +168,40 @@ def test_allow_empty(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
     log.write_text(LOG, encoding="utf-8")
     assert main(["stats", "build", "build.log", "--allow-empty"]) == 0
     assert "Lib.Graph" in capsys.readouterr().out
+
+
+def test_default_budget_for_library_sessions(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Lib has no --budget: with --default-budget it is held to 1 and fails
+    (elaborated in Core and Analysis_A). The project's own sessions are exempt."""
+    project = log.parent / "project"
+    project.mkdir()
+    (project / "ROOT").write_text(
+        "session Core = HOL\nsession Analysis_A = Core\nsession Analysis_B = Core\n"
+    )
+    args = ["stats", "build", str(log), "--format", "json", "--budget", "HOL-Library=3"]
+    assert main([*args, "--default-budget", "1", "--project", "project"]) == 1
+    captured = capsys.readouterr()
+    budgets = {
+        r["session"]: (r["elaborations"], r["budget"]) for r in json.loads(captured.out)["budgets"]
+    }
+    assert budgets == {"HOL-Library": (3, 3), "Lib": (2, 1)}
+    assert "over budget: Lib" in captured.err
+    assert main([*args, "--default-budget", "2", "--project", "project"]) == 0
+    capsys.readouterr()
+    # Without --default-budget, Lib is not budgeted at all.
+    assert main(args) == 0
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--default-budget", "1"], "--default-budget needs --project"),
+        (["--default-budget", "-1", "--project", "."], "--default-budget must be >= 0"),
+        (["--default-budget", "1", "--project", "nowhere"], "nowhere: not a directory"),
+    ],
+)
+def test_default_budget_errors(
+    log: Path, capsys: pytest.CaptureFixture[str], extra: list[str], message: str
+) -> None:
+    assert main(["stats", "build", str(log), *extra]) == 2
+    assert message in capsys.readouterr().err

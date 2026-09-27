@@ -233,12 +233,37 @@ def proofs_table(entries: Sequence[Entry], top: int = 0) -> Table:
     )
 
 
-def commands_table(entries: Sequence[Entry]) -> Table:
+def commands_table(entries: Sequence[Entry], by: str = "session") -> Table:
+    """Command uses per session, or with ``by="theory"`` per theory."""
+    if by == "theory":
+        rows: list[dict[str, Cell]] = [
+            {
+                "session": e.session,
+                "theory": e.theory,
+                "command": name,
+                "count": n,
+                "path": display_path(e.path),
+            }
+            for e in entries
+            for name, n in sorted(e.stats.commands.items(), key=lambda kv: (-kv[1], kv[0]))
+        ]
+        return Table(
+            "commands",
+            "Commands per theory",
+            [
+                Column("session", "session"),
+                Column("theory", "theory"),
+                Column("command", "command"),
+                Column("count", "count", True),
+                Column("path", "path"),
+            ],
+            rows,
+        )
     counts: Counter[tuple[str, str]] = Counter()
     for e in entries:
         for name, n in e.stats.commands.items():
             counts[(e.session, name)] += n
-    rows: list[dict[str, Cell]] = [
+    rows = [
         {"session": session, "command": name, "count": n}
         for (session, name), n in sorted(
             counts.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1])

@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from isar_tools.config import add_exclude_option
+from isar_tools.project.model import Project
 from isar_tools.project.workspace import InputError, add_include_option, load
 from isar_tools.render import RENDERERS, Table
 from isar_tools.stats.build import (
@@ -95,6 +96,13 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
             _top(view, 20)
         if name == "style":
             view.add_argument("--max-theory-lines", type=int, default=1500, metavar="N")
+        if name == "commands":
+            view.add_argument(
+                "--by",
+                choices=("session", "theory"),
+                default="session",
+                help="count per session (default) or per theory",
+            )
         view.set_defaults(func=run)
     _register_build(views)
 
@@ -129,6 +137,20 @@ def _register_build(views: "argparse._SubParsersAction[argparse.ArgumentParser]"
             "allow at most N elaborations of SESSION's theories inside other sessions; "
             "exceeding it is exit status 1 (repeatable)"
         ),
+    )
+    build.add_argument(
+        "--default-budget",
+        type=int,
+        metavar="N",
+        help="allow at most N elaborations inside other sessions for every library session "
+        "without its own --budget, library meaning not a session of --project (needs --project)",
+    )
+    build.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="the project whose sessions are exempt from --default-budget; read like "
+        "`isabelle build -D DIR`",
     )
     build.add_argument(
         "--allow-empty",
@@ -168,7 +190,7 @@ def run(args: argparse.Namespace) -> int:
         "sessions": lambda: [sessions_table(entries)],
         "theories": lambda: [theories_table(entries, args.sort, args.top)],
         "proofs": lambda: [proofs_table(entries, args.top)],
-        "commands": lambda: [commands_table(entries)],
+        "commands": lambda: [commands_table(entries, args.by)],
         "style": lambda: [style_table(entries, max_theory_lines=args.max_theory_lines)],
     }
     RENDERERS[args.format](builders[args.view](), sys.stdout)
@@ -182,6 +204,15 @@ def run_build(args: argparse.Namespace) -> int:
         if session in budgets:
             raise InputError(f"--budget {session} given twice")
         budgets[session] = count
+    if args.default_budget is not None and args.project is None:
+        raise InputError("--default-budget needs --project, to tell library sessions apart")
+    if args.default_budget is not None and args.default_budget < 0:
+        raise InputError("--default-budget must be >= 0")
+    own: frozenset[str] = frozenset()
+    if args.project is not None:
+        if not args.project.is_dir():
+            raise InputError(f"{args.project.as_posix()}: not a directory")
+        own = frozenset(s.name for s in Project.load(args.project).own_sessions)
     if not path.is_file():
         raise InputError(f"{path.as_posix()}: no such file")
     try:
@@ -205,7 +236,7 @@ def run_build(args: argparse.Namespace) -> int:
             "`isabelle build -v` log; a clean build (`isabelle build -c -v`) has them. "
             "Pass --allow-empty to accept an incremental build that rebuilt nothing."
         )
-    results = check_budgets(log, budgets)
+    results = check_budgets(log, budgets, args.default_budget, own)
     tables = [build_sessions_table(log), reelaboration_table(log, args.top)]
     if results:
         tables.append(budgets_table(results))

@@ -168,7 +168,9 @@ file = "src/B.thy"             # choose between declarations of the same name
 isar stats                               # sessions, then the largest theories
 isar stats proofs --top 10               # the longest proofs
 isar stats style --max-line-length 100   # long theories, long lines, sorry, watched methods
+isar stats commands --by theory --format json   # command counts per theory
 isar stats build build.log --budget HOL-Library=0
+isar stats build build.log --budget TD=8 --default-budget 0 --project .  # every other library: 0
 ```
 
 ### Configuration
