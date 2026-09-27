@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Commands of AFP entries are recognised without an AFP checkout: a table generated
+  from the AFP (revision cfdc3d77e, 2026-09-02) lists the commands each AFP session
+  makes visible to theories importing it, e.g. `derive` from `Deriving`. `-d` still
+  adds what a newer AFP declares. Regenerate with `scripts/gen_afp_commands.py`; the
+  corpus tests fail when the table is stale.
 - `--exclude GLOB` for `fmt`, `check`, and `stats`: leave out matching files (`**`
   spans directories), also when named on the command line.
 - Configuration file: `[tool.isar]` in `pyproject.toml`, or `isar.toml`, found upward
