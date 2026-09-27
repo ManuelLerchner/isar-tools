@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `isar project names`: named declarations with qualified name (`Theory.locale.name`),
+  kind, command, session, location, and docstring (a directly preceding `text` block), as
+  text, JSON, CSV, or a Markdown index grouped by session and theory. `--kind` filters;
+  `--name` (base or exact qualified name) exits 1 for a name that declares nothing and
+  suggests the qualified names that exist. Replaces Voblint's
+  `extract_definitions.py --dump` and `check_theory_anchors.py`.
+- `isar ... | head` no longer prints a `BrokenPipeError` traceback.
 - `isar project extract NAME...`: the source of a declaration (command and, for a goal,
   its proof), found by `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`; a
   name must identify exactly one declaration. `--manifest TOML --out DIR --write|--check`

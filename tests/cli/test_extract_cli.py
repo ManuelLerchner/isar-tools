@@ -117,3 +117,53 @@ def test_invalid(
     (project / "list.toml").write_text("snippets = [1]\n")
     assert main([*EXTRACT, *args]) == 2
     assert message in capsys.readouterr().err
+
+
+NAMES = ["project", "names"]
+
+
+@pytest.mark.parametrize(
+    ("args", "name"),
+    [
+        ([], "names.txt"),
+        (["--format", "json"], "names.json"),
+        (["--format", "markdown"], "names.md"),
+        (["--kind", "locale", "--kind", "constant"], "kinds.txt"),
+    ],
+)
+def test_names(
+    project: Path, capsys: pytest.CaptureFixture[str], golden: Golden, args: list[str], name: str
+) -> None:
+    assert main([*NAMES, *args]) == 0
+    golden(f"extract/{name}", capsys.readouterr().out)
+
+
+def test_names_markdown_prose(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": "theory T imports Main begin\n"
+            'text \\<open>Uses \\<^const>\\<open>f\\<close>, @{term "a | b"},\n'
+            "  and \\<open>x \\<le> y\\<close>.\\<close>\n"
+            'definition f :: nat where "f = 0"\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "--format", "markdown"]) == 0
+    assert (
+        '| `f` | definition | 4 | Uses `f`, `"a \\| b"`, and `x ≤ y`. |' in capsys.readouterr().out
+    )
+
+
+def test_names_by_name(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*NAMES, "--name", "B.l.succ_pos", "--name", "succ", "--format", "csv"]) == 0
+    rows = capsys.readouterr().out.splitlines()
+    assert [r.split(",")[0] for r in rows] == ["name", "A.succ", "B.l.succ_pos"]
+    # A qualifier with the wrong scope does not match, and the hint names the right one.
+    assert main([*NAMES, "--name", "B.succ_pos", "--name", "gone"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "isar project names: B.succ_pos: no declaration; did you mean A.succ_pos, B.l.succ_pos?",
+        "isar project names: gone: no declaration",
+    ]

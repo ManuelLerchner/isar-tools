@@ -31,6 +31,7 @@ Python 3.11 or newer; no runtime dependencies.
 | `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
 | `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
 | `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
 | `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
 | `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
 
@@ -112,6 +113,20 @@ AFP entries, pass their directory with `-d`, as with `isabelle build -d`:
 isar check -d ~/afp/thys .
 isar project hierarchy --root numeric_domain -d ~/afp/thys --format json
 ```
+
+### Names
+
+```sh
+isar project names --kind locale                  # every locale, as Theory.locale
+isar project names --format markdown > NAMES.md   # an index with docstrings
+isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
+```
+
+Names are qualified as Isabelle renders them: a lemma inside `context loc` is
+`Theory.loc.name`. With `--name`, a qualifier naming the wrong scope does not
+match, and the error suggests the names that exist, so links into rendered
+theories can be checked without building them. The docstring is a `text` block
+directly before the declaration.
 
 ### Quoting declarations
 

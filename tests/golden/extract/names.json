@@ -1,0 +1,44 @@
+{
+  "names": [
+    {
+      "name": "A.succ",
+      "kind": "constant",
+      "command": "definition",
+      "session": "S",
+      "path": "A.thy",
+      "line": 2,
+      "end_line": 3,
+      "doc": ""
+    },
+    {
+      "name": "A.succ_pos",
+      "kind": "fact",
+      "command": "lemma",
+      "session": "S",
+      "path": "A.thy",
+      "line": 5,
+      "end_line": 6,
+      "doc": ""
+    },
+    {
+      "name": "B.l",
+      "kind": "locale",
+      "command": "locale",
+      "session": "S",
+      "path": "B.thy",
+      "line": 2,
+      "end_line": 2,
+      "doc": ""
+    },
+    {
+      "name": "B.l.succ_pos",
+      "kind": "fact",
+      "command": "lemma",
+      "session": "S",
+      "path": "B.thy",
+      "line": 3,
+      "end_line": 4,
+      "doc": ""
+    }
+  ]
+}

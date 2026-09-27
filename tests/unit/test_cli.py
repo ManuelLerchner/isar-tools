@@ -32,3 +32,34 @@ def test_module_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as exc:
         runpy.run_module("isar_tools", run_name="__main__")
     assert exc.value.code == EXIT_USAGE
+
+
+def test_broken_pipe_is_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``isar ... | head``: a closed stdout ends the command without a traceback."""
+    import argparse
+    import io
+
+    import isar_tools.cli as cli
+    import isar_tools.stats.cli as stats_cli
+
+    redirected: list[tuple[int, int]] = []
+
+    def closed(args: argparse.Namespace) -> int:
+        raise BrokenPipeError
+
+    def fake_open(path: str, flags: int) -> int:
+        return 99
+
+    def fake_dup2(fd: int, fd2: int) -> None:
+        redirected.append((fd, fd2))
+
+    class Stdout(io.StringIO):
+        def fileno(self) -> int:
+            return 1
+
+    monkeypatch.setattr(stats_cli, "run", closed)
+    monkeypatch.setattr(cli.os, "open", fake_open)
+    monkeypatch.setattr(cli.os, "dup2", fake_dup2)
+    monkeypatch.setattr(cli.sys, "stdout", Stdout())
+    assert cli.main(["stats"]) == 1
+    assert redirected == [(99, 1)]
