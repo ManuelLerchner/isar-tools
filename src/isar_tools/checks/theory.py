@@ -56,7 +56,7 @@ def check_proofs(path: Path, theory: Theory) -> list[Finding]:
                 theory.lines,
                 theory.start(statement),
                 "unclosed-proof",
-                f"the proof of {label} does not end {where}",
+                f"proof of {label} not finished {where}",
             )
         )
     return findings
@@ -82,8 +82,8 @@ def check_syntax(path: Path, theory: Theory) -> list[Finding]:
             )
         elif len(args) > 1:
             message = (
-                f"unexpected {args[1].text!r} after the text of {command.name}; if it is a "
-                "command of another session, include that session's directory with -d"
+                f"unexpected {args[1].text!r} after the text of {command.name}; "
+                "a command of another session? pass its directory with -d"
             )
         else:
             continue

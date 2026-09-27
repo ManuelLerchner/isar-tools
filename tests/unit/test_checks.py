@@ -53,7 +53,9 @@ session Nowhere in "nowhere" = HOL + theories X
         (base / "a/other/Orphan.thy", 1, "unreached-theory"),
     ]
     duplicate = next(f for f in findings if f.code == "duplicate-theory-name")
-    assert "(T.thy, sub/T.thy)" in duplicate.message
+    assert duplicate.message == (
+        "two theories T on the search path of session A (T.thy, sub/T.thy); only one is built"
+    )
 
 
 def test_included_sessions_are_not_checked(make_project: MakeProject) -> None:
@@ -112,9 +114,9 @@ def test_proof_checks() -> None:
         (10, "unclosed-proof"),
     ]
     assert [f.message for f in findings[3:]] == [
-        "the proof of lemma d does not end before lemma",
-        "the proof of lemma does not end before definition",
-        "the proof of lemma g does not end before the end of the file",
+        "proof of lemma d not finished before lemma",
+        "proof of lemma not finished before definition",
+        "proof of lemma g not finished before the end of the file",
     ]
 
 

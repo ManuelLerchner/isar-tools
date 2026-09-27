@@ -83,3 +83,8 @@ def test_stdin(
     monkeypatch.setattr(sys, "stdin", stdin)
     assert main(["fmt", "-"]) == status
     assert capsysbinary.readouterr().out == out.encode()
+
+
+def test_colored_diff(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["fmt", "--diff", "--color", "always", "T.thy"]) == 1
+    assert "\x1b[32m+  by simp\x1b[0m" in capsys.readouterr().out

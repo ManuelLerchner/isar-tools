@@ -131,11 +131,9 @@ session = HOL
             4,
             5,
             "missing-theory",
-            "theory entry 'Missing' of session A has no .thy file on the session's search path",
+            "no Missing.thy on the search path of session A",
         ),
-        Problem(
-            root, 6, 5, "missing-theory", "theory entry 'B.Nope': session B has no theory Nope"
-        ),
+        Problem(root, 6, 5, "missing-theory", "session B has no theory Nope"),
     ]
     assert project.header(base / "Headless.thy") is None
     assert project.keywords_for(base / "Headless.thy")["lemma"] is CommandKind.THY_GOAL_STMT

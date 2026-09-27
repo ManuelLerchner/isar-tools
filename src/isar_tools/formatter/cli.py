@@ -1,7 +1,6 @@
 """``isar fmt``: format theory files."""
 
 import argparse
-import difflib
 import sys
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from isar_tools.formatter.wrap import format_source
 from isar_tools.project.workspace import add_include_option, collect
 from isar_tools.render import display_path
 from isar_tools.source.files import write_source
+from isar_tools.style import Style, add_color_option, write_diff
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
@@ -54,6 +54,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         help="wrap lines longer than N Isabelle symbols at spaces between tokens (default: off)",
     )
     add_include_option(fmt)
+    add_color_option(fmt)
     fmt.set_defaults(func=run)
 
 
@@ -83,14 +84,7 @@ def run(args: argparse.Namespace) -> int:
         if args.check:
             print(name)
         elif args.diff:
-            sys.stdout.writelines(
-                difflib.unified_diff(
-                    before.splitlines(keepends=True),
-                    after.splitlines(keepends=True),
-                    fromfile=f"a/{name}",
-                    tofile=f"b/{name}",
-                )
-            )
+            write_diff(before, after, name, sys.stdout, Style.for_stream(args.color, sys.stdout))
         else:
             write_source(source.path, after)
             print(f"formatted {name}", file=sys.stderr)
