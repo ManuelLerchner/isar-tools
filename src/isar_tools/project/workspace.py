@@ -43,11 +43,19 @@ class InputError(Exception):
     """A path argument that does not exist or is not a theory file."""
 
 
-def _thy_files(directory: Path) -> list[Path]:
+def _thy_files(directory: Path, include: Sequence[Path] = ()) -> list[Path]:
+    """Theory files below ``directory``, except those of ``include``
+    directories nested in it: an AFP or a vendored submodule inside a project
+    provides sessions to resolve against, not files to check or format."""
+    root = directory.resolve()
+    nested = [d.resolve() for d in include]
+    nested = [d for d in nested if d != root and d.is_relative_to(root)]
     return sorted(
         p.resolve()
         for p in directory.rglob("*.thy")
-        if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(directory).parts)
+        if p.is_file()
+        and not SKIP_DIRS.intersection(p.relative_to(directory).parts)
+        and not any(p.resolve().is_relative_to(d) for d in nested)
     )
 
 
@@ -86,7 +94,7 @@ def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
             project = project_of(path)
             if project not in named:
                 named.append(project)
-            for thy in _thy_files(path):
+            for thy in _thy_files(path, include):
                 found.setdefault(thy, SourceFile(thy, project))
         elif path.is_file() and path.suffix == ".thy":
             resolved = path.resolve()
