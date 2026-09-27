@@ -1,0 +1,53 @@
+{
+  "sessions": [
+    {
+      "session": "Analysis_A",
+      "theories": 2,
+      "foreign_theories": 1,
+      "cpu_seconds": 58.5,
+      "foreign_seconds": 13.0
+    },
+    {
+      "session": "Analysis_B",
+      "theories": 2,
+      "foreign_theories": 1,
+      "cpu_seconds": 41.75,
+      "foreign_seconds": 1.75
+    },
+    {
+      "session": "Core",
+      "theories": 3,
+      "foreign_theories": 2,
+      "cpu_seconds": 42.25,
+      "foreign_seconds": 12.25
+    },
+    {
+      "session": "Lib",
+      "theories": 2,
+      "foreign_theories": 1,
+      "cpu_seconds": 13.9,
+      "foreign_seconds": 1.5
+    },
+    {
+      "session": "TOTAL",
+      "theories": 9,
+      "foreign_theories": 5,
+      "cpu_seconds": 156.4,
+      "foreign_seconds": 28.5
+    }
+  ],
+  "reelaborated": [
+    {
+      "theory": "Lib.Graph",
+      "elaborations": 3,
+      "wasted_seconds": 25.4,
+      "sessions": "Analysis_A Core Lib"
+    },
+    {
+      "theory": "HOL-Library.Monad_Syntax",
+      "elaborations": 3,
+      "wasted_seconds": 3.25,
+      "sessions": "Analysis_B Core Lib"
+    }
+  ]
+}

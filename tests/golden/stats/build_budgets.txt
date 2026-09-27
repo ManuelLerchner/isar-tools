@@ -1,0 +1,19 @@
+Theory elaboration per building session (cpu seconds)
+session     theories  foreign  cpu s  foreign s
+----------  --------  -------  -----  ---------
+Analysis_A         2        1   58.5       13.0
+Analysis_B         2        1   41.8        1.8
+Core               3        2   42.2       12.2
+Lib                2        1   13.9        1.5
+TOTAL              9        5  156.4       28.5
+
+Theories elaborated more than once (2, 28.6s wasted)
+theory     x  wasted s  sessions
+---------  -  --------  -------------------
+Lib.Graph  3      25.4  Analysis_A Core Lib
+
+Elaborations of a session's theories inside other sessions
+session  elaborations  budget  cpu s  ok
+-------  ------------  ------  -----  ---
+Lib                 2       2   24.0  yes
+X                   0       0    0.0  yes

@@ -1,12 +1,20 @@
-"""``isar stats``: source and proof statistics."""
+"""``isar stats``: source, proof, and build statistics."""
 
 import argparse
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from isar_tools.project.workspace import add_include_option, collect
+from isar_tools.project.workspace import InputError, add_include_option, collect
 from isar_tools.render import RENDERERS, Table
+from isar_tools.stats.build import (
+    BuildLogError,
+    budgets_table,
+    check_budgets,
+    parse_build_log,
+    reelaboration_table,
+)
+from isar_tools.stats.build import sessions_table as build_sessions_table
 from isar_tools.stats.metrics import theory_stats
 from isar_tools.stats.views import (
     THEORY_SORTS,
@@ -28,6 +36,9 @@ VIEWS: dict[str, str] = {
     "commands": "command usage per session",
     "style": "theories that are too long, have long lines, unfinished proofs, or watched methods",
 }
+
+BUILD_VIEW = "build"
+BUILD_SUMMARY = "where theory elaboration time went in an `isabelle build -v` log"
 
 
 def _common(parser: argparse.ArgumentParser) -> None:
@@ -68,7 +79,9 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     stats = sub.add_parser(
         "stats",
         help="Report source, proof, and build statistics",
-        description="Report source and proof statistics. `isar stats PATH` shows the summary.",
+        description=(
+            "Report source, proof, and build statistics. `isar stats PATH` shows the summary."
+        ),
     )
     views = stats.add_subparsers(dest="view", metavar="<view>")
     for name, summary in VIEWS.items():
@@ -82,12 +95,55 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         if name == "style":
             view.add_argument("--max-theory-lines", type=int, default=1500, metavar="N")
         view.set_defaults(func=run)
+    _register_build(views)
+
+
+def _budget(spec: str) -> tuple[str, int]:
+    session, sep, count = spec.partition("=")
+    if not sep or not session or not count.isdigit():
+        raise argparse.ArgumentTypeError(f"expected SESSION=N with N >= 0, got {spec!r}")
+    return session, int(count)
+
+
+def _register_build(views: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
+    build = views.add_parser(
+        BUILD_VIEW,
+        help=BUILD_SUMMARY,
+        description=(
+            f"Report {BUILD_SUMMARY}: per-session totals and theories elaborated more "
+            "than once. Only lines `SESSION: theory OWNER.THEORY 100% (Ns cumulated time)` "
+            "are read."
+        ),
+    )
+    build.add_argument("log", type=Path, metavar="BUILD_LOG", help="output of `isabelle build -v`")
+    build.add_argument("--format", choices=sorted(RENDERERS), default="text")
+    _top(build, 10)
+    build.add_argument(
+        "--budget",
+        action="append",
+        type=_budget,
+        default=[],
+        metavar="SESSION=N",
+        help=(
+            "allow at most N elaborations of SESSION's theories inside other sessions; "
+            "exceeding it is exit status 1 (repeatable)"
+        ),
+    )
+    build.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="a log without theory elaboration lines is not an error (an incremental build "
+        "that rebuilt nothing); report nothing and exit 0",
+    )
+    build.set_defaults(func=run_build)
 
 
 def normalize_argv(argv: Sequence[str]) -> list[str]:
     """``stats PATH ...`` means ``stats summary PATH ...``."""
     args = list(argv)
-    if args[:1] == ["stats"] and (len(args) == 1 or args[1] not in (*VIEWS, "-h", "--help")):
+    if args[:1] == ["stats"] and (
+        len(args) == 1 or args[1] not in (*VIEWS, BUILD_VIEW, "-h", "--help")
+    ):
         args.insert(1, "summary")
     return args
 
@@ -114,3 +170,44 @@ def run(args: argparse.Namespace) -> int:
     }
     RENDERERS[args.format](builders[args.view](), sys.stdout)
     return 0
+
+
+def run_build(args: argparse.Namespace) -> int:
+    path: Path = args.log
+    budgets: dict[str, int] = {}
+    for session, count in args.budget:
+        if session in budgets:
+            raise InputError(f"--budget {session} given twice")
+        budgets[session] = count
+    if not path.is_file():
+        raise InputError(f"{path.as_posix()}: no such file")
+    try:
+        with path.open(encoding="utf-8", errors="replace") as lines:
+            log = parse_build_log(lines)
+    except OSError as error:
+        raise InputError(f"{path.as_posix()}: {error.strerror}") from error
+    except BuildLogError as error:
+        raise InputError(f"{path.as_posix()}: {error}") from error
+    if not log.elaborations and args.allow_empty:
+        print(
+            f"isar stats build: {path.as_posix()}: no theory elaboration lines; nothing to report",
+            file=sys.stderr,
+        )
+        return 0
+    if not log.elaborations:
+        raise InputError(
+            f"{path.as_posix()}: no theory elaboration lines "
+            "(`SESSION: theory OWNER.THEORY 100% (Ns cumulated time)`) in "
+            f"{log.lines} lines. Either nothing was rebuilt, or this is not an "
+            "`isabelle build -v` log; a clean build (`isabelle build -c -v`) has them. "
+            "Pass --allow-empty to accept an incremental build that rebuilt nothing."
+        )
+    results = check_budgets(log, budgets)
+    tables = [build_sessions_table(log), reelaboration_table(log, args.top)]
+    if results:
+        tables.append(budgets_table(results))
+    RENDERERS[args.format](tables, sys.stdout)
+    failed = [r for r in results if not r.ok]
+    for result in failed:
+        print(f"isar stats build: over budget: {result.message()}", file=sys.stderr)
+    return 1 if failed else 0

@@ -7,6 +7,15 @@
   through imports, including `-d` directories, and reports unresolved names.
 - Unqualified imports of global theory names (`Main`) resolve through the parent
   session chain.
+- `isar stats build BUILD_LOG`: where theory elaboration time went in an `isabelle build -v`
+  log. Per building session: theories elaborated, cpu seconds, and the share spent on
+  theories owned by other sessions; theories elaborated more than once with the time
+  wasted (`--top N`); `--budget SESSION=N` (repeatable) exits 1 when SESSION's theories
+  are elaborated inside other sessions more than N times. Reads only the line format
+  `SESSION: theory OWNER.THEORY 100% (Ns cumulated time)`; a log without such lines, or one
+  in which a session elaborates a theory twice, is exit status 2 (`--allow-empty` accepts
+  an incremental build that rebuilt nothing). `build` is now a view
+  name, so a directory called `build` needs `isar stats ./build`.
 - `isar check` prints a summary line (`2 findings: 1 missing-theory, ...`) and colours
   findings on a terminal; `fmt --diff` and `symbols normalize --diff` colour their diffs.
   `--color auto|always|never`; `NO_COLOR` is honoured. Finding messages are shorter.
