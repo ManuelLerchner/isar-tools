@@ -264,7 +264,7 @@ the 3.11 floor.
 | M4        | done except the build | Plus `--max-line-length` wrapping and raise-only default indentation. "Formatted Voblint builds" is open: it needs the round-trip workflow in Voblint's CI.                                             |
 | M5        | done                  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
 | M6        | partly                | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks). Isabelle build of formatted sources open.                                                                                          |
-| M7        | open                  | Tag `v0.1.0` after the Isabelle round trip passes.                                                                                                                                                      |
+| M7        | ready                 | Packaging checked (twine, clean install, tests from the sdist); `docs/RELEASING.md`. Tag `v0.1.0` after the Isabelle round trip passes.                                                                 |
 
 Beyond the plan: `isar project hierarchy` (class and locale declarations as
 data, for figures such as Voblint's domain tree) and `isar project extract`

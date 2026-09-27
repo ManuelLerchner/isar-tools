@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-09-27)
 
+First release.
+
+- Packaging: the sdist holds sources, tests, and documentation only (no lock files or
+  demo recording); README links are absolute, so they work on PyPI.
+  `docs/RELEASING.md` describes a release, including the conda-forge recipe.
 - `isar project names`: named declarations with qualified name (`Theory.locale.name`),
   kind, command, session, location, and docstring (a directly preceding `text` block), as
   text, JSON, CSV, or a Markdown index grouped by session and theory. `--kind` filters;

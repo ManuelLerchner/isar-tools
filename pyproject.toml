@@ -34,6 +34,11 @@ isar = "isar_tools.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/isar_tools"]
 
+# Sources, tests (downstream packagers run them), and the documentation; no
+# lock files, CI configuration, or demo recording.
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs/*.md", "README.md", "CHANGELOG.md", "LICENSE"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
