@@ -1,10 +1,13 @@
 # isar-tools
 
 [![CI Status][ci-badge]][ci]
+[![PyPI][pypi-badge]][pypi]
 [![License][license-badge]][license]
 
 [ci-badge]: https://img.shields.io/github/actions/workflow/status/ManuelLerchner/isar-tools/ci.yml?branch=main&style=flat-square&label=CI
 [ci]: https://github.com/ManuelLerchner/isar-tools/actions/workflows/ci.yml
+[pypi-badge]: https://img.shields.io/pypi/v/isar-tools?style=flat-square
+[pypi]: https://pypi.org/project/isar-tools/
 [license-badge]: https://img.shields.io/github/license/ManuelLerchner/isar-tools?style=flat-square
 [license]: https://github.com/ManuelLerchner/isar-tools/blob/main/LICENSE
 

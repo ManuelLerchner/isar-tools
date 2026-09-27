@@ -43,8 +43,10 @@ before submitting, since conda-forge's conventions change. The sha256 is the
 one PyPI lists for the sdist.
 
 ```yaml
+schema_version: 1
+
 context:
-  version: "0.1.0"
+  version: "X.Y.Z"
   python_min: "3.11"
 
 package:
@@ -56,8 +58,8 @@ source:
   sha256: <sdist sha256 from PyPI>
 
 build:
-  number: 0
   noarch: python
+  number: 0
   script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   python:
     entry_points:
@@ -75,20 +77,40 @@ tests:
   - python:
       imports:
         - isar_tools
+      python_version:
+        - ${{ python_min }}.*
+        - "*"
       pip_check: true
-      python_version: ${{ python_min }}.*
   - requirements:
       run:
         - python ${{ python_min }}.*
     script:
       - isar --version
       - isar --help
+  - files:
+      source:
+        - tests/
+        - pyproject.toml
+    requirements:
+      run:
+        - python ${{ python_min }}.*
+        - pytest
+        - hypothesis
+    script:
+      - pytest tests -q -p no:cacheprovider
 
 about:
   homepage: https://github.com/ManuelLerchner/isar-tools
-  summary: Source tooling for Isabelle/Isar projects - formatting, checks, and statistics
+  repository: https://github.com/ManuelLerchner/isar-tools
   license: MIT
   license_file: LICENSE
+  summary: Formatter, checks, and statistics for Isabelle/Isar projects, without running Isabelle
+  description: |
+    isar-tools reads Isabelle theory (.thy) and ROOT files without running
+    Isabelle. `isar fmt` formats theories (layout only, idempotent), `isar check`
+    reports problems in ROOT files, proofs, syntax, and symbols, `isar stats`
+    reports source, proof, and build-log statistics, and `isar project` shows
+    sessions, import graphs, class and locale hierarchies, and declarations.
 
 extra:
   recipe-maintainers:
