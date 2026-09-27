@@ -5,11 +5,11 @@ import difflib
 import sys
 from pathlib import Path
 
-from isar_tools.formatter.formatter import FormatError, Options, format_theory
+from isar_tools.formatter.formatter import FormatError, Options
+from isar_tools.formatter.wrap import format_source
 from isar_tools.project.workspace import add_include_option, collect
 from isar_tools.render import display_path
 from isar_tools.source.files import write_source
-from isar_tools.source.theory import parse_theory
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
@@ -17,7 +17,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "fmt",
         help="Format Isabelle/Isar source files",
         description="Format .thy files in place. Only layout changes: indentation, trailing "
-        "whitespace, and blank lines. `-` reads standard input and writes standard output.",
+        "whitespace, blank lines, and, with --max-line-length, line breaks at spaces between "
+        "tokens. `-` reads standard input and writes standard output.",
     )
     fmt.add_argument("paths", nargs="+", type=Path, help=".thy files or directories, or -")
     mode = fmt.add_mutually_exclusive_group()
@@ -40,13 +41,22 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         metavar="N",
         help="collapse longer runs of blank lines (default: 2)",
     )
+    fmt.add_argument(
+        "--max-line-length",
+        type=int,
+        metavar="N",
+        help="wrap lines longer than N Isabelle symbols at spaces between tokens (default: off)",
+    )
     add_include_option(fmt)
     fmt.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:
     options = Options(
-        indent=args.indent, max_blank_lines=args.max_blank_lines, normalize=args.normalize
+        indent=args.indent,
+        max_blank_lines=args.max_blank_lines,
+        normalize=args.normalize,
+        max_line_length=args.max_line_length,
     )
     if [str(p) for p in args.paths] == ["-"]:
         return _stdin(options)
@@ -56,7 +66,7 @@ def run(args: argparse.Namespace) -> int:
         name = display_path(source.path)
         before = source.read()
         try:
-            after = format_theory(parse_theory(before, source.keywords()), options)
+            after = format_source(before, source.keywords(), options)
         except FormatError as error:
             print(f"isar fmt: {name}: {error}; not formatted", file=sys.stderr)
             status = 2
@@ -86,7 +96,7 @@ def run(args: argparse.Namespace) -> int:
 def _stdin(options: Options) -> int:
     text = sys.stdin.buffer.read().decode("utf-8")
     try:
-        sys.stdout.buffer.write(format_theory(parse_theory(text), options).encode("utf-8"))
+        sys.stdout.buffer.write(format_source(text, None, options).encode("utf-8"))
     except FormatError as error:
         print(f"isar fmt: <stdin>: {error}", file=sys.stderr)
         return 2

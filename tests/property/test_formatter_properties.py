@@ -3,9 +3,9 @@
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from isar_tools.formatter.formatter import FormatError, Options, format_theory
+from isar_tools.formatter.formatter import FormatError, Options
+from isar_tools.formatter.wrap import format_source
 from isar_tools.source.lexer import LAYOUT, tokenize
-from isar_tools.source.theory import parse_theory
 
 WORDS = [
     "theory T imports Main begin",
@@ -67,6 +67,7 @@ options = st.builds(
     indent=st.integers(min_value=1, max_value=4),
     max_blank_lines=st.integers(min_value=0, max_value=3),
     normalize=st.booleans(),
+    max_line_length=st.none() | st.integers(min_value=1, max_value=60),
 )
 
 
@@ -78,17 +79,17 @@ def significant(text: str) -> list[tuple[object, str]]:
 @given(sources, options)
 def test_idempotent_and_layout_only(text: str, opts: Options) -> None:
     try:
-        once = format_theory(parse_theory(text), opts)
+        once = format_source(text, None, opts)
     except FormatError:
         return
     assert significant(once) == significant(text)
-    assert format_theory(parse_theory(once), opts) == once
+    assert format_source(once, None, opts) == once
 
 
 @given(sources)
 def test_no_trailing_whitespace(text: str) -> None:
     try:
-        out = format_theory(parse_theory(text))
+        out = format_source(text)
     except FormatError:
         return
     for line in out.splitlines():

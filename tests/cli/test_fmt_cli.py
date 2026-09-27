@@ -51,6 +51,12 @@ def test_options(thy: Path) -> None:
     assert read_source(thy) == "end\nend\n"
 
 
+def test_max_line_length(thy: Path) -> None:
+    write_source(thy, 'lemma x: "A"\n  using some_fact by simp\n')
+    assert main(["fmt", "--max-line-length", "20", "T.thy"]) == 0
+    assert read_source(thy) == 'lemma x: "A"\n  using some_fact\n  by simp\n'
+
+
 def test_unformattable_file(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_source(thy, 'lemma "open\n')
     assert main(["fmt", "."]) == 2
