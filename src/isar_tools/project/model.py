@@ -219,8 +219,14 @@ class Project:
 
     def _resolve(self) -> None:
         # Included sessions first, so a library theory belongs to its library
-        # even when a project theory imports it.
-        ordered = sorted(self.sessions.values(), key=lambda s: not s.external)
+        # even when a project theory imports it. Then ancestors before the
+        # sessions built on them, as Isabelle builds them: a theory both reach
+        # belongs to the ancestor whose heap holds it, however the ROOT files
+        # were found.
+        depth = self._depths()
+        ordered = sorted(
+            self.sessions.values(), key=lambda s: (not s.external, depth[s.name], s.name)
+        )
         for session in ordered:
             for entry in session.spec.theories:
                 text = entry.name.text
@@ -236,12 +242,20 @@ class Project:
                 else:
                     session.theories[Path(text).name] = path
                     self._owners.setdefault(path, session)
-        # Imports pull further theories into the session that reaches them first.
+        # Imports pull further theories into the session that reaches them
+        # first, but never out of another session's directories: a theory
+        # there is that session's, even when reached through it.
+        homes: dict[Path, set[str]] = {}
+        for other in self.sessions.values():
+            for d in other.search_dirs:
+                homes.setdefault(d.resolve(), set()).add(other.name)
         for session in ordered:
             for path in self.closure(list(session.theories.values()), session):
-                owner = self._owners.setdefault(path, session)
-                if owner is session:
-                    session.theories.setdefault(path.stem, path)
+                home = homes.get(path.parent, {session.name})
+                if path in self._owners or session.name not in home:
+                    continue
+                self._owners[path] = session
+                session.theories.setdefault(path.stem, path)
         for session in self.sessions.values():
             for entry in session.spec.theories:
                 qualifier, base = split_qualified(entry.name.text)
@@ -251,6 +265,25 @@ class Project:
                         entry.name,
                         f"session {qualifier} has no theory {base}",
                     )
+
+    def _depths(self) -> dict[str, int]:
+        """Length of the longest chain of parents and ``sessions`` entries
+        below each session, within the known sessions."""
+        depth: dict[str, int] = {}
+
+        def visit(name: str, active: frozenset[str]) -> int:
+            if name in depth:
+                return depth[name]
+            session = self.sessions[name]
+            below = [session.parent or "", *(n.text for n in session.spec.sessions)]
+            known = [n for n in below if n in self.sessions and n not in active]
+            # `active` only guards against a (malformed) cycle.
+            depth[name] = 1 + max((visit(n, active | {name}) for n in known), default=0)
+            return depth[name]
+
+        for name in self.sessions:
+            visit(name, frozenset())
+        return depth
 
     def _entry_problem(self, session: Session, name: Name, message: str) -> None:
         if session.external:

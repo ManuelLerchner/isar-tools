@@ -75,10 +75,15 @@ def test_included_directories_inside_a_project_are_not_its_files(
             "afp/thys/ROOTS": "E",
             "afp/thys/E/ROOT": "session E = HOL + theories E",
             "afp/thys/E/E.thy": "theory E imports Main begin end",
+            ".git/modules/x/ROOT": "",  # not a project, whatever it holds
         }
     )
-    included = [p.relative_to(base).as_posix() for p in (s.path for s in collect([base]))]
-    assert "afp/thys/E/E.thy" in included
+    # Without -d it is another project nested in this one: skipped, with a note.
+    workspace = load([base])
+    assert [p.relative_to(base).as_posix() for p in workspace.skipped] == ["afp/thys"]
+    assert "afp/thys/E/E.thy" not in [
+        s.path.relative_to(base).as_posix() for s in workspace.sources
+    ]
     sources = collect([base], [base / "afp" / "thys"])
     assert [s.path.relative_to(base).as_posix() for s in sources] == [
         "A.thy",

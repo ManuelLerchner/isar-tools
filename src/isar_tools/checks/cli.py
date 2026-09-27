@@ -72,6 +72,7 @@ def normalize_argv(argv: list[str]) -> list[str]:
 def collect_findings(args: argparse.Namespace) -> list[Finding]:
     groups: set[str] = set(args.groups or DEFAULT_GROUPS)
     workspace = load(args.paths, args.include)
+    workspace.note_skipped("check")
     findings: list[Finding] = []
     if "project" in groups:
         for project in workspace.projects:

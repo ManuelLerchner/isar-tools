@@ -146,5 +146,6 @@ def test_included_sessions(make_project: MakeProject) -> None:
             "locale lib = fixes lib_op\nconsts lib_const :: nat\nend",
         }
     )
-    assert len(check_locales(collect([base]))) == 1  # lib: not visible
+    # Without -d, lib/ is another project: neither lib_op nor lib_const is visible.
+    assert len(check_locales(collect([base]))) == 2
     assert check_locales(collect([base], [base / "lib"])) == []

@@ -3,5 +3,5 @@ Core.A
   -> Core.B
 Core.B
   -> HOL-Library.Multiset
-App-Main.C
+Bare.C
   -> Core.A

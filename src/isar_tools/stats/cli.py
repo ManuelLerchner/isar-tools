@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from isar_tools.project.workspace import InputError, add_include_option, collect
+from isar_tools.project.workspace import InputError, add_include_option, load
 from isar_tools.render import RENDERERS, Table
 from isar_tools.stats.build import (
     BuildLogError,
@@ -151,7 +151,9 @@ def normalize_argv(argv: Sequence[str]) -> list[str]:
 def run(args: argparse.Namespace) -> int:
     watched = frozenset(args.watch or DEFAULT_WATCHED)
     entries: list[Entry] = []
-    for source in collect(args.paths, args.include):
+    workspace = load(args.paths, args.include)
+    workspace.note_skipped("stats")
+    for source in workspace.sources:
         if args.session and source.session not in args.session:
             continue
         stats = theory_stats(source.parse(), max_line_length=args.max_line_length, methods=watched)

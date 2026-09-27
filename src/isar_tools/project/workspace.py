@@ -2,16 +2,20 @@
 
 A path argument is either a ``.thy`` file or a directory. A directory is loaded
 as a project (see ``Project.load``); every ``.thy`` file below it is included,
-whether or not a session reaches it. A file is parsed with the project of its
-directory.
+whether or not a session reaches it, except those of other projects nested in
+it: ``-d`` directories, and directories with their own ``ROOT`` or ``ROOTS``
+that hold none of the project's sessions (a vendored submodule, say). A file is
+parsed with the project of its directory.
 """
 
 import argparse
+import sys
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.project.model import SKIP_DIRS, Project
+from isar_tools.render import display_path
 from isar_tools.source.files import read_source
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.theory import Theory, parse_theory
@@ -43,12 +47,32 @@ class InputError(Exception):
     """A path argument that does not exist or is not a theory file."""
 
 
-def _thy_files(directory: Path, include: Sequence[Path] = ()) -> list[Path]:
-    """Theory files below ``directory``, except those of ``include``
+def foreign_projects(directory: Path, project: Project) -> list[Path]:
+    """Directories below ``directory`` with their own ``ROOT`` or ``ROOTS``
+    that hold none of ``project``'s sessions: other projects, such as a
+    vendored submodule that ``ROOTS`` does not list."""
+    root = directory.resolve()
+    own = [s.dir.resolve() for s in project.own_sessions]
+    found: set[Path] = set()
+    for marker in ("ROOT", "ROOTS"):
+        for path in root.rglob(marker):
+            d = path.parent.resolve()
+            if d == root or not path.is_file():
+                continue
+            if SKIP_DIRS.intersection(d.relative_to(root).parts):
+                continue
+            if not any(s == d or s.is_relative_to(d) for s in own):
+                found.add(d)
+    # Only the outermost: a foreign project's own sessions are not ours either.
+    return sorted(d for d in found if not any(d != o and d.is_relative_to(o) for o in found))
+
+
+def _thy_files(directory: Path, excluded: Sequence[Path] = ()) -> list[Path]:
+    """Theory files below ``directory``, except those of ``excluded``
     directories nested in it: an AFP or a vendored submodule inside a project
     provides sessions to resolve against, not files to check or format."""
     root = directory.resolve()
-    nested = [d.resolve() for d in include]
+    nested = [d.resolve() for d in excluded]
     nested = [d for d in nested if d != root and d.is_relative_to(root)]
     return sorted(
         p.resolve()
@@ -73,6 +97,17 @@ class Workspace:
     # Projects of the directory arguments, in argument order. A file argument
     # loads its project only to parse the file, so it adds none.
     projects: list[Project]
+    # Nested directories of other projects, skipped (see ``foreign_projects``).
+    skipped: list[Path] = field(default_factory=list[Path])
+
+    def note_skipped(self, command: str) -> None:
+        """Tell the user, on stderr, which nested projects were left out."""
+        for directory in self.skipped:
+            print(
+                f"isar {command}: note: skipped {display_path(directory)}: another project "
+                "(its own ROOT, none of the sessions); pass it with -d to resolve against it",
+                file=sys.stderr,
+            )
 
 
 def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
@@ -89,12 +124,16 @@ def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
         return projects[directory]
 
     named: list[Project] = []
+    skipped: list[Path] = []
     for path in paths:
         if path.is_dir():
             project = project_of(path)
             if project not in named:
                 named.append(project)
-            for thy in _thy_files(path, include):
+            foreign = foreign_projects(path, project)
+            included = {d.resolve() for d in include}
+            skipped += [d for d in foreign if d not in included and d not in skipped]
+            for thy in _thy_files(path, [*include, *foreign]):
                 found.setdefault(thy, SourceFile(thy, project))
         elif path.is_file() and path.suffix == ".thy":
             resolved = path.resolve()
@@ -103,7 +142,7 @@ def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
             raise InputError(f"{path.as_posix()}: not a directory or .thy file")
         else:
             raise InputError(f"{path.as_posix()}: no such file or directory")
-    return Workspace(list(found.values()), named)
+    return Workspace(list(found.values()), named, skipped)
 
 
 def collect(paths: Iterable[Path], include: Sequence[Path] = ()) -> list[SourceFile]:
