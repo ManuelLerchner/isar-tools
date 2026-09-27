@@ -1,9 +1,9 @@
 import runpy
 import sys
+from importlib.metadata import version
 
 import pytest
 
-from isar_tools import __version__
 from isar_tools.cli import COMMANDS, EXIT_USAGE, main
 
 
@@ -34,7 +34,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == f"isar {__version__}"
+    assert capsys.readouterr().out.strip() == f"isar {version('isar-tools')}"
 
 
 def test_module_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:

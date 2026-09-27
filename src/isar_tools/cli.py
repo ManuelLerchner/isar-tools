@@ -8,8 +8,7 @@ diagnostics to stderr.
 import argparse
 import sys
 from collections.abc import Sequence
-
-from isar_tools import __version__
+from importlib.metadata import version
 
 EXIT_OK = 0
 EXIT_FAIL = 1
@@ -26,7 +25,7 @@ COMMANDS: dict[str, str] = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="isar", description="Source tooling for Isabelle/Isar.")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {version('isar-tools')}")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     for name, summary in COMMANDS.items():
         sub.add_parser(name, help=summary, description=summary)
