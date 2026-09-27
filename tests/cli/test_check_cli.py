@@ -151,3 +151,42 @@ def test_configuration_file(
     assert main(["check", "--group", "project", "--format", "json", "."]) == 1
     codes = [f["code"] for f in json.loads(capsys.readouterr().out)["findings"]]
     assert codes == ["missing-theory"]
+
+
+def test_new_groups_and_invalid_utf8(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A B",
+            "A.thy": "theory A imports Main begin\nlemma x: True\n\tsledgehammer\n  by simp\nend\n",
+            "B.thy": "",
+        }
+    )
+    # Bytes, not text: on Windows write_text would add CRs, which hygiene reports.
+    (base / "A.thy").write_bytes(
+        b"theory A imports Main begin\nlemma x: True\n\tsledgehammer\n  by simp\nend\n"
+    )
+    (base / "B.thy").write_bytes(b"theory B imports Main begin\n\xff\nend\n")
+    monkeypatch.chdir(base)
+    assert main(["check", "--format", "json", "."]) == 1
+    found = [(f["path"], f["code"]) for f in json.loads(capsys.readouterr().out)["findings"]]
+    assert found == [("B.thy", "invalid-utf8")]
+    args = ["check", "--group", "hygiene", "--group", "leftovers", "--format", "json", "."]
+    assert main(args) == 1
+    found = [(f["path"], f["code"]) for f in json.loads(capsys.readouterr().out)["findings"]]
+    assert found == [("A.thy", "tab"), ("A.thy", "proof-search")]
+
+
+def test_several_positional_groups() -> None:
+    from isar_tools.checks.cli import normalize_argv
+
+    assert normalize_argv(["check", "leftovers", "hygiene", "src"]) == [
+        "check",
+        "--group",
+        "leftovers",
+        "--group",
+        "hygiene",
+        "src",
+    ]
+    assert normalize_argv(["fmt", "docs"]) == ["fmt", "docs"]

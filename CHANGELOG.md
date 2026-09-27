@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `isar check`: `theory-name` (the header names a theory other than the file, or a
+  qualified one) and `invalid-utf8` in the default `syntax` group; opt-in groups
+  `hygiene` (`tab`, `carriage-return`, `bidi-control`, `reserved-file-name`, after
+  Isabelle's `check_sources`) and `leftovers` (`proof-search`, `counterexample-search`
+  without `expect`, `diagnostic-command`, after isabelle-linter's rules of those names).
+  A theory that is not UTF-8 no longer stops `isar check`.
+- Theory headers with a document tag (`theory %invisible All`) are read correctly; the
+  tag was taken for the theory name.
 - `isar stats commands --by theory`: command counts per theory (session, theory,
   command, count, path); `--by session` stays the default.
 - `isar stats build --default-budget N --project DIR`: every library session without its

@@ -9,9 +9,15 @@ from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
+from isar_tools.checks.sources import (
+    check_hygiene,
+    check_leftovers,
+    check_theory_name,
+    invalid_utf8,
+)
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
 from isar_tools.config import add_exclude_option
-from isar_tools.project.workspace import add_include_option, load
+from isar_tools.project.workspace import SourceFile, add_include_option, load
 from isar_tools.render import RENDERERS, Column, Table, display_path
 from isar_tools.style import Style, add_color_option
 
@@ -36,7 +42,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         dest="groups",
         action="append",
         choices=GROUPS,
-        help="run this group of checks (repeatable; default: all but symbols, docs, and locales)",
+        help=f"run this group of checks (repeatable; default: {', '.join(DEFAULT_GROUPS)})",
     )
     check.add_argument(
         "--ignore",
@@ -64,10 +70,14 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
-    """``check GROUP ...`` means ``check --group GROUP ...``."""
+    """``check GROUP... PATH...`` means ``check --group GROUP... PATH...``."""
     args = list(argv)
-    if len(args) > 1 and args[0] == "check" and args[1] in GROUPS:
-        args[1:2] = ["--group", args[1]]
+    if args[:1] != ["check"]:
+        return args
+    i = 1
+    while i < len(args) and args[i] in GROUPS:
+        args[i : i + 1] = ["--group", args[i]]
+        i += 2
     return args
 
 
@@ -79,13 +89,28 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
     if "project" in groups:
         for project in workspace.projects:
             findings += check_project(project)
-    if groups & {"proofs", "syntax", "symbols", "docs"}:
-        for source in workspace.sources:
+    readable: list[SourceFile] = []
+    for source in workspace.sources:
+        data = source.path.read_bytes()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as error:
+            if "syntax" in groups:
+                findings.append(invalid_utf8(source.path, data, error))
+            continue
+        readable.append(source)
+        if "hygiene" in groups:
+            findings += check_hygiene(source.path, text)
+    if groups & {"proofs", "syntax", "symbols", "docs", "leftovers"}:
+        for source in readable:
             theory = source.parse()
             if "proofs" in groups:
                 findings += check_proofs(source.path, theory)
             if "syntax" in groups:
                 findings += check_syntax(source.path, theory)
+                findings += check_theory_name(source.path, theory)
+            if "leftovers" in groups:
+                findings += check_leftovers(source.path, theory)
             if "symbols" in groups:
                 findings += check_symbols(
                     source.path, theory, include_comments=args.include_comments
@@ -93,7 +118,7 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
             if "docs" in groups:
                 findings += check_docs(source.path, theory)
     if "locales" in groups:
-        findings += check_locales(workspace.sources, allow=args.allow)
+        findings += check_locales(readable, allow=args.allow)
     ignored = set(args.ignore)
     return sorted({f for f in findings if f.code not in ignored})
 
@@ -130,6 +155,8 @@ _GROUP_COLORS = {
     "symbols": "cyan",
     "docs": "green",
     "locales": "blue",
+    "hygiene": "magenta",
+    "leftovers": "yellow",
 }
 
 
