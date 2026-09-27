@@ -23,6 +23,7 @@ pre-commit:
       exclude:
         - "tests/golden/**"
         - "tests/formatter/**/*.thy"
+        - "docs/demo/demo.gif"
       run: pixi run --frozen typos {staged_files}
     - name: zizmor
       glob: ".github/workflows/*.yml"
@@ -31,11 +32,13 @@ pre-commit:
       exclude:
         - "tests/golden/**"
         - "tests/formatter/**/*.thy"
+        - "docs/demo/demo.gif"
       run: pixi run --frozen trailing-whitespace-fixer {staged_files}
     - name: end-of-file
       exclude:
         - "tests/golden/**"
         - "tests/formatter/**/*.thy"
+        - "docs/demo/demo.gif"
       run: pixi run --frozen end-of-file-fixer {staged_files}
     - name: check-merge-conflict
       run: pixi run --frozen check-merge-conflict {staged_files}

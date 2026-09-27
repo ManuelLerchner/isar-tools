@@ -5,6 +5,8 @@
 - `isar check` prints a summary line (`2 findings: 1 missing-theory, ...`) and colours
   findings on a terminal; `fmt --diff` and `symbols normalize --diff` colour their diffs.
   `--color auto|always|never`; `NO_COLOR` is honoured. Finding messages are shorter.
+- README demo GIF recorded by VHS from `docs/demo/demo.tape` (`pixi run demo`, in a
+  separate `demo` environment).
 - Source model: lossless outer-syntax lexer, Isabelle symbol table, theory headers,
   command segmentation with per-theory keyword tables, and goal blocks.
 - Project model: ROOT parser with positioned diagnostics, `ROOTS` discovery, theory and

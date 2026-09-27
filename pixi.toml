@@ -46,6 +46,17 @@ typecheck = { cmd = "pyright", description = "Type-check sources and tests in st
 [feature.py311.dependencies]
 python = "3.11.*"
 
+# Records the README demo GIF with VHS: `pixi run demo`.
+[feature.demo.dependencies]
+# vhs 0.12.0 records frames but never writes the output file (fixed in 0.12.1).
+vhs = "!=0.12.0"
+ttyd = "*"
+ffmpeg = "*"
+
+[feature.demo.tasks]
+demo = { cmd = "vhs docs/demo/demo.tape", description = "Record docs/demo/demo.gif from docs/demo/demo.tape." }
+
 [environments]
 default = ["lint", "build"]
 py311 = ["py311"]
+demo = { features = ["demo"], solve-group = "default" }

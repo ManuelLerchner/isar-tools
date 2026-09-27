@@ -1,0 +1,10 @@
+session Demo = HOL +
+  options [document = false]
+  theories
+    Lists
+    Arith
+    Sorting
+
+session Demo_Extra in "extra" = Demo +
+  theories
+    Extra
