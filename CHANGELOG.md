@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (2026-09-27)
 
 - A directory argument no longer includes the theories of `-d` directories nested
   in it. An AFP or a vendored submodule inside a project provides sessions to resolve
