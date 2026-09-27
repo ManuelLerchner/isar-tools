@@ -129,6 +129,12 @@ def _register_build(views: "argparse._SubParsersAction[argparse.ArgumentParser]"
             "exceeding it is exit status 1 (repeatable)"
         ),
     )
+    build.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="a log without theory elaboration lines is not an error (an incremental build "
+        "that rebuilt nothing); report nothing and exit 0",
+    )
     build.set_defaults(func=run_build)
 
 
@@ -182,12 +188,19 @@ def run_build(args: argparse.Namespace) -> int:
         raise InputError(f"{path.as_posix()}: {error.strerror}") from error
     except BuildLogError as error:
         raise InputError(f"{path.as_posix()}: {error}") from error
+    if not log.elaborations and args.allow_empty:
+        print(
+            f"isar stats build: {path.as_posix()}: no theory elaboration lines; nothing to report",
+            file=sys.stderr,
+        )
+        return 0
     if not log.elaborations:
         raise InputError(
             f"{path.as_posix()}: no theory elaboration lines "
             "(`SESSION: theory OWNER.THEORY 100% (Ns cumulated time)`) in "
             f"{log.lines} lines. Either nothing was rebuilt, or this is not an "
-            "`isabelle build -v` log; a clean build (`isabelle build -c -v`) has them."
+            "`isabelle build -v` log; a clean build (`isabelle build -c -v`) has them. "
+            "Pass --allow-empty to accept an incremental build that rebuilt nothing."
         )
     results = check_budgets(log, budgets)
     tables = [build_sessions_table(log), reelaboration_table(log, args.top)]

@@ -157,3 +157,14 @@ def test_invalid_utf8_is_tolerated(log: Path, capsys: pytest.CaptureFixture[str]
 def test_build_is_a_view() -> None:
     assert normalize_argv(["stats", "build", "x.log"]) == ["stats", "build", "x.log"]
     assert normalize_argv(["stats", "src"]) == ["stats", "summary", "src"]
+
+
+def test_allow_empty(log: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log.write_text("Building Lib ...\n", encoding="utf-8")
+    assert main(["stats", "build", "build.log", "--allow-empty"]) == 0
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err == "isar stats build: build.log: no theory elaboration lines; nothing to report\n"
+    log.write_text(LOG, encoding="utf-8")
+    assert main(["stats", "build", "build.log", "--allow-empty"]) == 0
+    assert "Lib.Graph" in capsys.readouterr().out
