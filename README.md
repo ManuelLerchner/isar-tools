@@ -9,20 +9,74 @@ demo project, isar check reports an unfinished proof (sorry), isar fmt --diff
 indents a proof and removes trailing whitespace and extra blank lines, and isar
 project graph prints the theory import graph.](docs/demo/demo.gif)
 
-Status: pre-alpha. All commands are implemented. See
-[`docs/PLAN.md`](docs/PLAN.md) for scope and milestones.
+Status: pre-alpha. See [`CHANGELOG.md`](CHANGELOG.md) and
+[`docs/PLAN.md`](docs/PLAN.md).
 
-## Commands (planned)
+## Install
 
-```text
-isar fmt       Format Isabelle/Isar source files
-isar check     Check project and source hygiene
-isar stats     Report source, proof, and build statistics
-isar project   Inspect Isabelle project structure
-isar symbols   Inspect or normalize Isabelle symbols
+```sh
+pip install isar-tools          # or: pixi global install isar-tools
+isar --help
+```
+
+Python 3.11 or newer; no runtime dependencies.
+
+## Commands
+
+| Command                                  | What it does                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `isar fmt [PATH...]`                     | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
+| `isar check [GROUP] [PATH...]`           | Report problems in ROOT files, proofs, syntax, symbols, and documentation                  |
+| `isar stats [VIEW] [PATH...]`            | Size, proof, and command statistics                                                        |
+| `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
+| `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
+| `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
+| `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
+
+A path is a project directory, read like `isabelle build -D` (its `ROOT`, and
+`ROOTS` recursively), or a `.thy` file. Commands that read a project default to the current
+directory.
+
+Exit status: `0` success, `1` findings or differences, `2` invalid invocation or
+unreadable input. Data goes to stdout, diagnostics to stderr. JSON and CSV output
+use stable snake_case keys and are never coloured.
+
+### Formatting
+
+```sh
+isar fmt                          # format every .thy below the current directory
+isar fmt --check                  # list files that would change; exit 1 if any
+isar fmt --diff Foo.thy           # show the change without writing
+isar fmt --max-line-length 100    # also wrap long lines
+isar fmt -                        # stdin to stdout, for editors
+```
+
+The formatter only changes layout. It never changes a token, never touches the
+space between two tokens on a line, and never rewrites strings, cartouches,
+comments, or ML. By default it only indents lines that are too shallow for their
+proof structure; `--normalize` sets indentation exactly. See
+[`docs/FORMATTER.md`](docs/FORMATTER.md).
+
+As a git hook with [lefthook](https://github.com/evilmartians/lefthook):
+
+```yaml
+pre-commit:
+  jobs:
+    - name: isar-fmt
+      glob: "*.thy"
+      run: isar fmt {staged_files}
+      stage_fixed: true
 ```
 
 ### Checks
+
+```sh
+isar check                        # groups project, proofs, and syntax
+isar check symbols src/           # non-ASCII characters outside comments
+isar check docs src/              # theories, headings, locales, classes without a text block
+isar check --ignore oops --format json
+```
 
 | Group     | Codes                                                                                                                                           |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,11 +86,62 @@ isar symbols   Inspect or normalize Isabelle symbols
 | `symbols` | `non-ascii` (opt-in)                                                                                                                            |
 | `docs`    | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                             |
 
-`isar check` runs `project`, `proofs`, and `syntax`; `isar check docs PATH` runs
-the documentation-coverage policy. `isar check --help` describes every code.
+Project checks run for directory arguments only. `isar check --help` describes
+every code.
 
-Exit status: `0` success, `1` check failure or differences found, `2` invalid
-invocation or unreadable input. Data goes to stdout, diagnostics to stderr.
+### Commands of other sessions
+
+Whether a word is an Isar command depends on the theories a file imports. The
+built-in table covers Pure and HOL, and commands declared in the theory headers
+of the project are found automatically. For commands of other projects, such as
+AFP entries, pass their directory with `-d`, as with `isabelle build -d`:
+
+```sh
+isar check -d ~/afp/thys .
+isar project hierarchy --root numeric_domain -d ~/afp/thys --format json
+```
+
+### Quoting declarations
+
+```sh
+isar project extract combine_env locale_name.lemma_name
+isar project extract --manifest snippets.toml --out generated/ --write   # regenerate
+isar project extract --manifest snippets.toml --out generated/ --check   # diff; exit 1 on drift
+```
+
+A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and
+must identify one declaration; its source is the command and, for a goal, its
+proof. A manifest lists names as TOML tables, so a document that quotes a
+definition fails its check when the definition changes or is renamed:
+
+```toml
+[snippets.combine_env]
+why = "shown in chapter 3"     # free text, ignored
+[snippets.succ_pos]
+file = "src/B.thy"             # choose between declarations of the same name
+```
+
+### Statistics
+
+```sh
+isar stats                               # sessions, then the largest theories
+isar stats proofs --top 10               # the longest proofs
+isar stats style --max-line-length 100   # long theories, long lines, sorry, watched methods
+isar stats build build.log --budget HOL-Library=0
+```
+
+## Limits
+
+- Nothing runs Isabelle, so nothing is type-checked or proved. A formatted file
+  is guaranteed to contain the same tokens; building it is the project's CI's
+  job.
+- The built-in command table is hand-written. A command of a session that is
+  neither built in nor passed with `-d` is read as part of the previous command.
+- `project extract` finds names that commands declare; derived names
+  (`foo_def`, `foo.simps`) and names made by interpretations are not found.
+- `project hierarchy` follows declared parents, not `sublocale`, `subclass`, or
+  `interpretation`.
+- `stats build` reads one log line format, observed in Isabelle2025 logs.
 
 ## Development
 
@@ -51,13 +156,17 @@ pixi run lint
 pixi run isar --help
 pixi run demo                # re-record docs/demo/demo.gif with VHS
 pixi run demo-check          # run the demo commands without recording
+ISAR_CORPUS=~/afp/thys pixi run corpus   # integration tests over real projects
 ```
 
+Expected output lives in golden files under `tests/golden/` and
+`tests/formatter/`. `UPDATE_GOLDEN=1 pixi run test` rewrites them, so a change in
+output shows up as a diff in review.
+
 The demo GIF is generated by [VHS](https://github.com/charmbracelet/vhs) from
-[`docs/demo/demo.tape`](docs/demo/demo.tape), which runs the real commands on
-the small project in [`docs/demo/project`](docs/demo/project). The `demo` task
-uses its own pixi environment, so VHS, ttyd, and ffmpeg stay out of the default
-one.
+[`docs/demo/demo.tape`](docs/demo/demo.tape), which runs the real commands on the
+small project in [`docs/demo/project`](docs/demo/project). The `demo` task uses
+its own pixi environment, so VHS, ttyd, and ffmpeg stay out of the default one.
 
 ## License
 
