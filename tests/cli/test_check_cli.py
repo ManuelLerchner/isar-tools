@@ -89,3 +89,26 @@ def test_color_and_singular_summary(project: Path, capsys: pytest.CaptureFixture
         "sorry leaves the goal unproved\n"
     )
     assert err == "1 finding: 1 unfinished-proof\n"
+
+
+def test_locales_group(
+    make_project: MakeProject,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    golden: Golden,
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories L",
+            "L.thy": "theory L imports Main begin\n"
+            "locale l = fixes own_op\n"
+            '  assumes "own_op = enter_local" and "\\<forall>bound_var. own_op bound_var"\n'
+            "end\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert run(capsys, ".") == (0, "", "no findings\n")  # not a default group
+    status, out, err = run(capsys, "locales", ".")
+    assert (status, err) == (1, "1 finding: 1 locale-free-variable\n")
+    golden("check/locales.txt", out)
+    assert run(capsys, "locales", ".", "--allow", "enter_local") == (0, "", "no findings\n")

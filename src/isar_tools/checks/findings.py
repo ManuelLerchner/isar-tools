@@ -45,7 +45,11 @@ CODES: dict[str, tuple[str, str]] = {
     "undocumented-heading": ("docs", "a heading with no text block right after or before it"),
     "undocumented-locale": ("docs", "a locale with no text block right before it"),
     "undocumented-class": ("docs", "a type class with no text block right before it"),
+    "locale-free-variable": (
+        "locales",
+        "a locale or context header term names something defined nowhere (heuristic)",
+    ),
 }
 
-GROUPS = ("project", "proofs", "syntax", "symbols", "docs")
+GROUPS = ("project", "proofs", "syntax", "symbols", "docs", "locales")
 DEFAULT_GROUPS = ("project", "proofs", "syntax")

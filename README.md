@@ -26,7 +26,7 @@ Python 3.11 or newer; no runtime dependencies.
 | Command                                  | What it does                                                                               |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `isar fmt [PATH...]`                     | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
-| `isar check [GROUP] [PATH...]`           | Report problems in ROOT files, proofs, syntax, symbols, and documentation                  |
+| `isar check [GROUP] [PATH...]`           | Report problems in ROOT files, proofs, syntax, symbols, docs, and locales                  |
 | `isar stats [VIEW] [PATH...]`            | Size, proof, and command statistics                                                        |
 | `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
 | `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
@@ -75,6 +75,7 @@ pre-commit:
 isar check                        # groups project, proofs, and syntax
 isar check symbols src/           # non-ASCII characters outside comments
 isar check docs src/              # theories, headings, locales, classes without a text block
+isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
 
@@ -85,9 +86,20 @@ isar check --ignore oops --format json
 | `syntax`  | `lexical-error`, `document-argument`                                                                                                            |
 | `symbols` | `non-ascii` (opt-in)                                                                                                                            |
 | `docs`    | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                             |
+| `locales` | `locale-free-variable` (opt-in, heuristic)                                                                                                      |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
+
+`locales` is heuristic. Inside the terms of a `locale` or `context` header,
+Isabelle reads an unknown identifier as a free variable and generalizes over
+it, so an assumption citing a deleted or misspelt constant still builds. The
+check reports identifiers that are no parameter of the header (its `fixes`,
+`for` clause, `defines`, or those of the locales it extends, resolved through
+imports), not bound in the term, and not used anywhere else in the project or
+in the `-d` theories it imports. Only names of at least four characters with an
+underscore (or `\<^sub>`) are reported; `--allow NAME` (repeatable) accepts a
+name. Inner syntax is approximated lexically: see `isar_tools/checks/locales.py`.
 
 ### Commands of other sessions
 

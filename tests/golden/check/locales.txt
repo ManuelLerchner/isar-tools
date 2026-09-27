@@ -1,0 +1,1 @@
+L.thy:3:21: locale-free-variable: enter_local in the header of locale l is no parameter, bound variable, or name used elsewhere; Isabelle generalizes over it as a free variable

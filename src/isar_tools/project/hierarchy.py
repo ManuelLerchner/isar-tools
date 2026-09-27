@@ -8,6 +8,10 @@ is extracted:
   expression (``class c = order + ...``, ``locale l = a f + b + ...``);
 - ``fixes``: parameters with their type and mixfix annotation;
 - ``assumes``: named assumptions and their propositions;
+- ``for_fixes`` and ``defines``: parameters of the ``for`` clause of the parent
+  expression, and local definitions;
+- ``terms``: the tokens that hold terms (instance arguments, assumptions,
+  definitions), with their source positions;
 - ``sorts``: the sorts that type variables of the parameters are constrained
   to (``'a::numeric_domain``); for a class these are superclasses too.
 
@@ -23,8 +27,10 @@ from pathlib import Path
 from isar_tools.source.lexer import Kind, Token
 from isar_tools.source.theory import Command, Theory, significant, unquote
 
-_ELEMENTS = frozenset({"fixes", "constrains", "assumes", "defines", "notes", "includes"})
+# `opening` ends a locale expression; its bundles are not elements proper.
+_ELEMENTS = frozenset({"fixes", "constrains", "assumes", "defines", "notes", "includes", "opening"})
 _TEXT = frozenset({Kind.STRING, Kind.CARTOUCHE})
+_TERM = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE})
 # 'a::sort or 'a::{s1, s2} inside a type, possibly with spaces around `::`.
 _SORT_RE = re.compile(r"'\w+\s*::\s*(\{[^}]*\}|[A-Za-z_][\w.]*)")
 
@@ -52,6 +58,11 @@ class Declaration:
     parents: list[str] = field(default_factory=list[str])
     fixes: list[Parameter] = field(default_factory=list[Parameter])
     assumes: list[Assumption] = field(default_factory=list[Assumption])
+    for_fixes: list[Parameter] = field(default_factory=list[Parameter])
+    defines: list[Assumption] = field(default_factory=list[Assumption])
+    # Term tokens (WORD, STRING, or CARTOUCHE) of the header, in source order;
+    # types and mixfix annotations are not terms.
+    terms: list[Token] = field(default_factory=list[Token], repr=False)
 
     @property
     def sorts(self) -> list[str]:
@@ -82,11 +93,13 @@ def _split_top(toks: list[Token], separator: str) -> Iterator[list[Token]]:
     yield part
 
 
-def _parents(expression: list[Token]) -> list[str]:
-    """Names of the classes or locales in a parent expression."""
+def _parents(expression: list[Token]) -> tuple[list[str], list[Token], list[Parameter]]:
+    """Names of the classes or locales in a parent expression, the terms of
+    their instance arguments, and the parameters of the ``for`` clause."""
     # The `for` clause only renames the instances' parameters.
     stop = next((i for i, t in enumerate(expression) if t.text == "for"), len(expression))
     names: list[str] = []
+    terms: list[Token] = []
     for instance in _split_top(expression[:stop], "+"):
         words = list(instance)
         # A qualifier (`q: loc`, `q?: loc`) precedes the locale name.
@@ -94,7 +107,9 @@ def _parents(expression: list[Token]) -> list[str]:
             words = words[3:] if words[1].text == "?" else words[2:]
         if words and words[0].kind in (Kind.WORD, Kind.STRING):
             names.append(unquote(words[0]))
-    return names
+            terms += [t for t in words[1:] if t.kind in _TERM and t.text != "where"]
+    params = [p for entry in _split_top(expression[stop + 1 :], "and") for p in _fixes(entry)]
+    return names, terms, params
 
 
 def _mixfix(group: list[Token]) -> tuple[str, str]:
@@ -135,8 +150,9 @@ def _fixes(entry: list[Token]) -> Iterator[Parameter]:
         yield Parameter(name, type_, mixfix, notation)
 
 
-def _assumes(entry: list[Token]) -> Assumption:
-    """``name [attrs]: "prop" ...`` or just the propositions."""
+def _assumes(entry: list[Token]) -> tuple[Assumption, list[Token]]:
+    """``name [attrs]: "prop" ...`` or just the propositions, and the tokens
+    of the propositions (not of ``(is "pattern")``)."""
     name = ""
     i = 0
     if entry and entry[0].kind is Kind.WORD:
@@ -149,7 +165,36 @@ def _assumes(entry: list[Token]) -> Assumption:
         _, j = _bracket_group(entry, 0)
         i = j + 1 if j < len(entry) and entry[j].text == ":" else 0
     props = tuple(unquote(t) for t in entry[i:] if t.kind in _TEXT)
-    return Assumption(name, props)
+    depth = 0
+    terms: list[Token] = []
+    for tok in entry[i:]:
+        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
+        if depth == 0 and tok.kind in _TEXT:
+            terms.append(tok)
+    return Assumption(name, props), terms
+
+
+def _elements(decl: Declaration, body: list[Token]) -> None:
+    """Add the context elements (``fixes``, ``assumes``, ...) of ``body``."""
+    element = ""
+    part: list[Token] = []
+    for tok in [*body, None]:
+        if tok is None or (tok.kind is Kind.WORD and tok.text in _ELEMENTS):
+            for entry in _split_top(part, "and") if element else ():
+                if element == "fixes":
+                    decl.fixes += _fixes(entry)
+                elif element in ("assumes", "defines"):
+                    assumption, terms = _assumes(entry)
+                    (decl.assumes if element == "assumes" else decl.defines).append(assumption)
+                    decl.terms += terms
+            if tok is not None:
+                element, part = tok.text, []
+        else:
+            part.append(tok)
+
+
+def _body(toks: list[Token]) -> list[Token]:
+    return toks[:-1] if toks and toks[-1].text == "begin" else toks
 
 
 def parse_declaration(theory: Theory, command: Command, path: Path) -> Declaration | None:
@@ -162,9 +207,7 @@ def parse_declaration(theory: Theory, command: Command, path: Path) -> Declarati
     decl = Declaration(
         command.name, unquote(toks[0]), path, theory.lines.line(theory.start(command))
     )
-    body = toks[2:] if len(toks) > 1 and toks[1].text == "=" else []
-    if body and body[-1].text == "begin":
-        body = body[:-1]
+    body = _body(toks[2:] if len(toks) > 1 and toks[1].text == "=" else [])
     first = next(
         (i for i, t in enumerate(body) if t.kind is Kind.WORD and t.text in _ELEMENTS),
         len(body),
@@ -172,20 +215,23 @@ def parse_declaration(theory: Theory, command: Command, path: Path) -> Declarati
     expression = body[:first]
     if expression and expression[-1].text == "+":
         expression = expression[:-1]
-    decl.parents = _parents(expression)
-    element = ""
-    part: list[Token] = []
-    for tok in [*body[first:], None]:
-        if tok is None or (tok.kind is Kind.WORD and tok.text in _ELEMENTS):
-            for entry in _split_top(part, "and") if element else ():
-                if element == "fixes":
-                    decl.fixes += _fixes(entry)
-                elif element == "assumes":
-                    decl.assumes.append(_assumes(entry))
-            if tok is not None:
-                element, part = tok.text, []
-        else:
-            part.append(tok)
+    decl.parents, decl.terms, decl.for_fixes = _parents(expression)
+    _elements(decl, body[first:])
+    return decl
+
+
+def parse_context(theory: Theory, command: Command, path: Path) -> Declaration | None:
+    """The block a ``context`` command opens, as a declaration of kind
+    ``context``: ``context loc begin`` has the parent ``loc``; an unnamed
+    ``context fixes ... assumes ... begin`` has its own elements."""
+    if command.name != "context":
+        return None
+    toks = _body(list(significant(command.tokens(theory.tokens)))[1:])
+    decl = Declaration("context", "", path, theory.lines.line(theory.start(command)))
+    if toks and toks[0].kind in (Kind.WORD, Kind.STRING) and toks[0].text not in _ELEMENTS:
+        decl.parents = [unquote(toks[0])]
+        toks = toks[1:]
+    _elements(decl, toks)
     return decl
 
 
@@ -234,11 +280,15 @@ def resolve(
 
 
 def closure(
-    index: dict[str, list[Located]], roots: list[str], visible: Visible
+    index: dict[str, list[Located]],
+    roots: list[str],
+    visible: Visible,
+    context: Path | None = None,
 ) -> tuple[list[Located], list[str]]:
     """``roots`` and everything they extend, parents before children, and the
     names that no visible declaration defines. ``visible(path)`` is the set of
-    theory files a theory can see: itself and its imports."""
+    theory files a theory can see: itself and its imports. With ``context``,
+    the roots are names as written in that theory file."""
     ordered: list[Located] = []
     seen: set[int] = set()
     missing: dict[str, None] = {}
@@ -257,7 +307,7 @@ def closure(
         ordered.append(found)
 
     for root in roots:
-        visit(root, None, frozenset())
+        visit(root, context, frozenset())
     return ordered, list(missing)
 
 
