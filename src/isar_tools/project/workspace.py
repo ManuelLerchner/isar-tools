@@ -14,6 +14,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from isar_tools.config import Exclude
 from isar_tools.project.model import SKIP_DIRS, Project
 from isar_tools.render import display_path
 from isar_tools.source.files import read_source
@@ -110,10 +111,13 @@ class Workspace:
             )
 
 
-def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
+def load(
+    paths: Iterable[Path], include: Sequence[Path] = (), exclude: Sequence[Exclude] = ()
+) -> Workspace:
     """Theory files named by ``paths``, each once, in argument order, and the
     projects they were loaded with. ``include`` directories resolve imports and
-    keywords, like ``isabelle build -d``."""
+    keywords, like ``isabelle build -d``. Files that an ``exclude`` glob
+    matches are left out, whether found in a directory or named."""
     found: dict[Path, SourceFile] = {}
     projects: dict[Path, Project] = {}
 
@@ -134,10 +138,13 @@ def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
             included = {d.resolve() for d in include}
             skipped += [d for d in foreign if d not in included and d not in skipped]
             for thy in _thy_files(path, [*include, *foreign]):
-                found.setdefault(thy, SourceFile(thy, project))
+                if not any(e.matches(thy) for e in exclude):
+                    found.setdefault(thy, SourceFile(thy, project))
         elif path.is_file() and path.suffix == ".thy":
             resolved = path.resolve()
-            found.setdefault(resolved, SourceFile(resolved, project_of(project_root(resolved))))
+            if not any(e.matches(resolved) for e in exclude):
+                project = project_of(project_root(resolved))
+                found.setdefault(resolved, SourceFile(resolved, project))
         elif path.exists():
             raise InputError(f"{path.as_posix()}: not a directory or .thy file")
         else:

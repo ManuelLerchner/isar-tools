@@ -169,6 +169,32 @@ isar stats style --max-line-length 100   # long theories, long lines, sorry, wat
 isar stats build build.log --budget HOL-Library=0
 ```
 
+### Configuration
+
+Options a project always wants go in `[tool.isar]` in `pyproject.toml`, or in an
+`isar.toml` (same keys, at the top level). The file is found by searching upward
+from the working directory.
+
+```toml
+[tool.isar]
+include = ["$AFP", "vendor/td-verification"]  # like -d; skipped with a note if absent
+exclude = ["src/**/generated/**"]             # like --exclude
+
+[tool.isar.fmt]
+max-line-length = 100    # also: indent, max-blank-lines, normalize
+
+[tool.isar.check]
+groups = ["project", "proofs", "syntax"]      # also: ignore, allow
+
+[tool.isar.stats]
+max-line-length = 100    # also: watch
+```
+
+Paths and globs are relative to the file. Command-line options win; `-d` and
+`--exclude` add to the lists, and `--max-line-length 0` turns configured wrapping off.
+A glob excludes matching files and everything below matching directories, also when a
+file is named on the command line (as a git hook does).
+
 ## Limits
 
 - Nothing runs Isabelle, so nothing is type-checked or proved. A formatted file

@@ -10,7 +10,9 @@ import os
 import sys
 from collections.abc import Sequence
 from importlib.metadata import version
+from pathlib import Path
 
+from isar_tools import config as config_file
 from isar_tools import symbols_cli
 from isar_tools.checks import cli as check_cli
 from isar_tools.formatter import cli as fmt_cli
@@ -41,6 +43,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(check_cli.normalize_argv(stats_cli.normalize_argv(raw)))
     if args.command is None:
         parser.print_help(sys.stderr)
+        return EXIT_USAGE
+    try:
+        config_file.apply(config_file.load(Path.cwd()), args)
+    except config_file.ConfigError as error:
+        print(f"isar {args.command}: {error}", file=sys.stderr)
         return EXIT_USAGE
     try:
         return args.func(args)

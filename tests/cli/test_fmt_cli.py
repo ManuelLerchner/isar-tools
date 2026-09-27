@@ -6,6 +6,7 @@ import pytest
 
 from isar_tools.cli import main
 from isar_tools.source.files import read_source, write_source
+from tests.conftest import MakeProject
 
 UGLY = 'theory T imports Main begin\nlemma x: "A"\nby simp  \nend\n'
 PRETTY = 'theory T imports Main begin\nlemma x: "A"\n  by simp\nend\n'
@@ -98,3 +99,37 @@ def test_missing_include_directory_is_an_error(
         main(["fmt", "--check", "-d", str(tmp_path / "missing"), str(tmp_path)])
     assert exit_info.value.code == 2
     assert "missing: not a directory" in capsys.readouterr().err
+
+
+def test_configuration_file(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    long = "lemma x: " + " \\<and> ".join(["True"] * 30)
+    base = make_project(
+        {
+            "isar.toml": 'exclude = ["gen/**"]\n[fmt]\nmax-line-length = 40\nindent = 4\n',
+            "ROOT": "session S = HOL + theories A",
+            "A.thy": f"theory A imports Main begin\n{long}\n  by simp\nend\n",
+            "gen/G.thy": "theory G imports Main begin\nlemma y: True\nby simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    # The file sets wrapping and the indent step, and leaves gen/ out.
+    assert main(["fmt", "--check", "."]) == 1
+    assert capsys.readouterr().out.splitlines() == ["A.thy"]
+    assert main(["fmt", "--diff", "A.thy"]) == 1
+    assert "\n+        True" in capsys.readouterr().out  # continuation: two steps of 4
+    # The command line wins: 0 turns wrapping off, --indent 2 overrides 4.
+    assert main(["fmt", "--check", "--max-line-length", "0", "--indent", "2", "."]) == 0
+    # --exclude adds to the file's list; a named file that matches is left out too.
+    assert main(["fmt", "--check", "--exclude", "A.thy", "."]) == 0
+    assert main(["fmt", "--check", "gen/G.thy"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_invalid_configuration_file(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(make_project({"isar.toml": "[fmt]\nwidth = 1\n"}))
+    assert main(["fmt", "--check", "."]) == 2
+    assert "[fmt] has no option 'width'" in capsys.readouterr().err

@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from isar_tools.config import add_exclude_option
 from isar_tools.project.workspace import InputError, add_include_option, load
 from isar_tools.render import RENDERERS, Table
 from isar_tools.stats.build import (
@@ -52,7 +53,6 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-line-length",
         type=int,
-        default=100,
         metavar="N",
         help="a line longer than N Isabelle symbols is long (default: 100)",
     )
@@ -63,6 +63,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         help=f"count uses of this proof method (repeatable; default: {' '.join(DEFAULT_WATCHED)})",
     )
     add_include_option(parser)
+    add_exclude_option(parser)
 
 
 def _top(parser: argparse.ArgumentParser, default: int) -> None:
@@ -151,7 +152,7 @@ def normalize_argv(argv: Sequence[str]) -> list[str]:
 def run(args: argparse.Namespace) -> int:
     watched = frozenset(args.watch or DEFAULT_WATCHED)
     entries: list[Entry] = []
-    workspace = load(args.paths, args.include)
+    workspace = load(args.paths, args.include, args.exclude)
     workspace.note_skipped("stats")
     for source in workspace.sources:
         if args.session and source.session not in args.session:
