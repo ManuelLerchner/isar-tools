@@ -55,6 +55,7 @@ from isar_tools.source.keywords import (
     CommandKind,
 )
 from isar_tools.source.lexer import Kind, Token
+from isar_tools.source.symbols import symbol_length
 from isar_tools.source.theory import COMMENT_MARKERS, Theory
 
 K = CommandKind
@@ -89,6 +90,8 @@ class Options:
     # False: only raise lines indented less than their structure requires, and
     # keep deeper indentation. True: set every structural line exactly.
     normalize: bool = False
+    # Wrap lines longer than this many Isabelle symbols (see wrap.py); None: off.
+    max_line_length: int | None = None
 
 
 class FormatError(Exception):
@@ -103,7 +106,7 @@ class _Frame(Enum):
 
 
 @dataclass
-class _Line:
+class SourceLine:
     """Tokens between two NEWLINE tokens. A token spanning several physical
     lines (a multi-line string, say) stays inside one such line."""
 
@@ -130,18 +133,18 @@ class _Line:
         return any("\n" in t.text or "\r" in t.text for t in self.content)
 
 
-def _lines(theory: Theory) -> list[_Line]:
-    lines: list[_Line] = []
+def source_lines(theory: Theory) -> list[SourceLine]:
+    lines: list[SourceLine] = []
     current: list[Token] = []
     first = 0
     for i, tok in enumerate(theory.tokens):
         if tok.kind is Kind.NEWLINE:
-            lines.append(_Line(current, tok.text, first))
+            lines.append(SourceLine(current, tok.text, first))
             current = []
             first = i + 1
         else:
             current.append(tok)
-    lines.append(_Line(current, "", first))
+    lines.append(SourceLine(current, "", first))
     return lines
 
 
@@ -255,11 +258,12 @@ class _State:
                 return
 
 
-def _width(indent: str) -> int:
-    return len(indent.expandtabs(8))
+def line_width(text: str) -> int:
+    """Display width in Isabelle symbols, tabs expanded to 8 columns."""
+    return symbol_length(text.expandtabs(8))
 
 
-def _depths(theory: Theory) -> list[int]:
+def token_depths(theory: Theory) -> list[int]:
     """Bracket depth before each token, counted within its command."""
     depths = [0] * len(theory.tokens)
     starts = {c.first for c in theory.commands}
@@ -300,14 +304,14 @@ def format_theory(theory: Theory, options: Options | None = None) -> str:
     for index, command in enumerate(theory.commands):
         for i in range(command.first, command.stop):
             owner[i] = index
-    depths = _depths(theory)
+    depths = token_depths(theory)
     state = _State(options)
     commands: dict[int, _Command] = {}
     out: list[str] = []
     blank_run = 0
     started = False
 
-    for line in _lines(theory):
+    for line in source_lines(theory):
         content = line.content
         if not content:
             blank_run += 1
@@ -320,7 +324,7 @@ def format_theory(theory: Theory, options: Options | None = None) -> str:
         line_starts = [
             starts[i] for i in range(first_index, line.first + len(line.tokens)) if i in starts
         ]
-        old = _width(line.indent)
+        old = line_width(line.indent)
         head = content[0]
         new = old
         if first_index in starts:

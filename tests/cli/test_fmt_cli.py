@@ -20,7 +20,7 @@ def thy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_in_place(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["fmt", "."]) == 0
+    assert main(["fmt"]) == 0
     assert read_source(thy) == PRETTY
     assert capsys.readouterr().err == "formatted T.thy\n"
     assert main(["fmt", "."]) == 0
@@ -49,6 +49,12 @@ def test_options(thy: Path) -> None:
     write_source(thy, "end\n\n\n\nend\n")
     assert main(["fmt", "--max-blank-lines", "0", "T.thy"]) == 0
     assert read_source(thy) == "end\nend\n"
+
+
+def test_max_line_length(thy: Path) -> None:
+    write_source(thy, 'lemma x: "A"\n  using some_fact by simp\n')
+    assert main(["fmt", "--max-line-length", "20", "T.thy"]) == 0
+    assert read_source(thy) == 'lemma x: "A"\n  using some_fact\n  by simp\n'
 
 
 def test_unformattable_file(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
