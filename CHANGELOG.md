@@ -15,6 +15,9 @@
 - `-d DIR` on `stats`, `check`, and `project`: sessions of DIR resolve imports and
   commands, like `isabelle build -d`.
 - Source files are read and written byte-exactly, so CRLF line endings survive.
+- `isar fmt`: conservative formatter (indentation from proof structure, trailing
+  whitespace, blank lines); `--check`, `--diff`, `--normalize`, stdin via `-`. Changes
+  only layout, by construction and by test.
 - Opt-in corpus tests (`pixi run corpus` with `ISAR_CORPUS`).
 - Repository scaffold: pixi environment, package skeleton, `isar` CLI with
   placeholder commands, tests, lint, type checking, and CI.

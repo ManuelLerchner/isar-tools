@@ -1,2 +1,4 @@
 * text=auto eol=lf
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
+# Fixtures that test CRLF handling must keep their line endings.
+tests/formatter/**/crlf.thy -text

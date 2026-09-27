@@ -12,6 +12,7 @@ from importlib.metadata import version
 
 from isar_tools import symbols_cli
 from isar_tools.checks import cli as check_cli
+from isar_tools.formatter import cli as fmt_cli
 from isar_tools.project import cli as project_cli
 from isar_tools.project.workspace import InputError
 from isar_tools.stats import cli as stats_cli
@@ -20,27 +21,16 @@ EXIT_OK = 0
 EXIT_FAIL = 1
 EXIT_USAGE = 2
 
-# Commands not implemented yet.
-PLACEHOLDERS: dict[str, str] = {
-    "fmt": "Format Isabelle/Isar source files",
-}
-
-
-def _placeholder(args: argparse.Namespace) -> int:
-    print(f"isar {args.command}: not implemented yet", file=sys.stderr)
-    return EXIT_USAGE
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="isar", description="Source tooling for Isabelle/Isar.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('isar-tools')}")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
+    fmt_cli.register(sub)
     stats_cli.register(sub)
     check_cli.register(sub)
     project_cli.register(sub)
     symbols_cli.register(sub)
-    for name, summary in PLACEHOLDERS.items():
-        sub.add_parser(name, help=summary, description=summary).set_defaults(func=_placeholder)
     return parser
 
 

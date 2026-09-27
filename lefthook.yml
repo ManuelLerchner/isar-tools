@@ -15,12 +15,14 @@ pre-commit:
     - name: prettier
       exclude:
         - "tests/golden/**"
+        - "tests/formatter/**/*.thy"
       glob: "*.{md,yml,yaml,json}"
       run: pixi run --frozen prettier --write --check {staged_files}
       stage_fixed: true
     - name: typos
       exclude:
         - "tests/golden/**"
+        - "tests/formatter/**/*.thy"
       run: pixi run --frozen typos {staged_files}
     - name: zizmor
       glob: ".github/workflows/*.yml"
@@ -28,10 +30,12 @@ pre-commit:
     - name: trailing-whitespace
       exclude:
         - "tests/golden/**"
+        - "tests/formatter/**/*.thy"
       run: pixi run --frozen trailing-whitespace-fixer {staged_files}
     - name: end-of-file
       exclude:
         - "tests/golden/**"
+        - "tests/formatter/**/*.thy"
       run: pixi run --frozen end-of-file-fixer {staged_files}
     - name: check-merge-conflict
       run: pixi run --frozen check-merge-conflict {staged_files}

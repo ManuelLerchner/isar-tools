@@ -4,8 +4,7 @@ Source tooling for Isabelle/Isar projects: a formatter, project and source
 checks, and statistics. Pure Python. Works on `.thy` and `ROOT` files without
 running Isabelle.
 
-Status: pre-alpha. `stats`, `check`, `project`, and `symbols` are implemented; `fmt` is
-not yet. See
+Status: pre-alpha. All commands are implemented. See
 [`docs/PLAN.md`](docs/PLAN.md) for scope and milestones.
 
 ## Commands (planned)
