@@ -88,3 +88,13 @@ def test_stdin(
 def test_colored_diff(thy: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["fmt", "--diff", "--color", "always", "T.thy"]) == 1
     assert "\x1b[32m+  by simp\x1b[0m" in capsys.readouterr().out
+
+
+def test_missing_include_directory_is_an_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A mistyped `-d` would silently drop the commands it should provide."""
+    with pytest.raises(SystemExit) as exit_info:
+        main(["fmt", "--check", "-d", str(tmp_path / "missing"), str(tmp_path)])
+    assert exit_info.value.code == 2
+    assert "missing: not a directory" in capsys.readouterr().err

@@ -255,16 +255,16 @@ the 3.11 floor.
 
 ### Status (2026-09)
 
-| Milestone | State                 | Notes                                                                                                                                                                                                   |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M0        | done                  |                                                                                                                                                                                                         |
-| M1        | done                  | Own ROOT parser instead of an `isabelle-layout` adapter (see `PARSER_DECISION.md`).                                                                                                                     |
-| M2        | done                  | Also `commands` and `style` views.                                                                                                                                                                      |
-| M3        | done                  | Groups `project`, `proofs`, `syntax`, `symbols`; a `syntax` group replaces the planned `document` group (the only precise document check is lexical). Also `isar symbols normalize` and `isar project`. |
-| M4        | done except the build | Plus `--max-line-length` wrapping and raise-only default indentation. "Formatted Voblint builds" is open: it needs the round-trip workflow in Voblint's CI.                                             |
-| M5        | done                  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
-| M6        | partly                | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks). Isabelle build of formatted sources open.                                                                                          |
-| M7        | open                  | Tag `v0.1.0` after the Isabelle round trip passes.                                                                                                                                                      |
+| Milestone | State | Notes                                                                                                                                                                                                   |
+| --------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0        | done  |                                                                                                                                                                                                         |
+| M1        | done  | Own ROOT parser instead of an `isabelle-layout` adapter (see `PARSER_DECISION.md`).                                                                                                                     |
+| M2        | done  | Also `commands` and `style` views.                                                                                                                                                                      |
+| M3        | done  | Groups `project`, `proofs`, `syntax`, `symbols`; a `syntax` group replaces the planned `document` group (the only precise document check is lexical). Also `isar symbols normalize` and `isar project`. |
+| M4        | done  | Plus `--max-line-length` wrapping and raise-only default indentation. Voblint formatted with `--max-line-length 100` builds with Isabelle (local round trip).                                           |
+| M5        | done  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
+| M6        | done  | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks); formatted Voblint builds. The AFP is not build-tested after formatting.                                                            |
+| M7        | ready | Packaging checked (twine, clean install, tests from the sdist); `docs/RELEASING.md`. Tag `v0.1.0` after PyPI trusted publishing is set up.                                                              |
 
 Beyond the plan: `isar project hierarchy` (class and locale declarations as
 data, for figures such as Voblint's domain tree) and `isar project extract`
