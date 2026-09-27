@@ -253,6 +253,24 @@ the 3.11 floor.
 - **M7 0.1.0**: GitHub release and PyPI. conda-forge staged recipe and Tools
   Collection only after real external use.
 
+### Status (2026-09)
+
+| Milestone | State                 | Notes                                                                                                                                                                                                   |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0        | done                  |                                                                                                                                                                                                         |
+| M1        | done                  | Own ROOT parser instead of an `isabelle-layout` adapter (see `PARSER_DECISION.md`).                                                                                                                     |
+| M2        | done                  | Also `commands` and `style` views.                                                                                                                                                                      |
+| M3        | done                  | Groups `project`, `proofs`, `syntax`, `symbols`; a `syntax` group replaces the planned `document` group (the only precise document check is lexical). Also `isar symbols normalize` and `isar project`. |
+| M4        | done except the build | Plus `--max-line-length` wrapping and raise-only default indentation. "Formatted Voblint builds" is open: it needs the round-trip workflow in Voblint's CI.                                             |
+| M5        | done                  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
+| M6        | partly                | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks). Isabelle build of formatted sources open.                                                                                          |
+| M7        | open                  | Tag `v0.1.0` after the Isabelle round trip passes.                                                                                                                                                      |
+
+Beyond the plan: `isar project hierarchy` (class and locale declarations as
+data, for figures such as Voblint's domain tree) and `isar project extract`
+(declaration source by name, with a manifest drift check replacing Voblint's
+`snippets.py`).
+
 ## 13. Design principles
 
 1. Correctness over aggressive formatting; preserve what cannot be formatted
@@ -275,5 +293,10 @@ the 3.11 floor.
 - `isabelle-layout` 0.2.2 and `isabelle-query` 0.9.2 are pure-Python, MIT,
   `Requires-Python >=3.9`. `isabelle-layout` has no runtime dependencies;
   `isabelle-query` depends only on `isabelle-layout`.
-- Unverified: whether either is on conda-forge. If `isar-tools` depends on
-  them, both must be on conda-forge before `isar-tools` can be.
+- Unverified: whether either is on conda-forge. `isar-tools` depends on
+  neither, so this does not block a conda-forge recipe.
+- AFP (Isabelle2025-2 mirror): 1027 ROOTs reached through `ROOTS`, 1057
+  sessions, 10342 reached theories; every theory lexes, every goal block closes,
+  and formatting preserves tokens and is idempotent.
+- Quoted slash entries in `theories` (`"Common/List_Misc"`) are valid (911 in the
+  AFP); only the unquoted spelling fails, because it is several tokens.
