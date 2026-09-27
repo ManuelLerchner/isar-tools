@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
@@ -9,6 +10,7 @@ from isar_tools.checks.project import check_project
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
 from isar_tools.project.workspace import add_include_option, load
 from isar_tools.render import RENDERERS, Column, Table, display_path
+from isar_tools.style import Style, add_color_option
 
 FORMATS = ("text", "json", "csv")
 
@@ -45,6 +47,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "--include-comments", action="store_true", help="symbols: also check (* *) comments"
     )
     check.add_argument("--format", choices=FORMATS, default="text")
+    add_color_option(check)
     add_include_option(check)
     check.set_defaults(func=run)
 
@@ -103,13 +106,31 @@ def findings_table(findings: list[Finding]) -> Table:
     )
 
 
+# Colour of a finding's code, by group.
+_GROUP_COLORS = {"project": "magenta", "proofs": "yellow", "syntax": "red", "symbols": "cyan"}
+
+
+def summary(findings: list[Finding]) -> str:
+    """``2 findings: 1 missing-theory, 1 unfinished-proof``, most frequent first."""
+    if not findings:
+        return "no findings"
+    counts = Counter(f.code for f in findings)
+    parts = ", ".join(
+        f"{n} {code}" for code, n in sorted(counts.items(), key=lambda c: (-c[1], c[0]))
+    )
+    noun = "finding" if len(findings) == 1 else "findings"
+    return f"{len(findings)} {noun}: {parts}"
+
+
 def run(args: argparse.Namespace) -> int:
     findings = collect_findings(args)
     if args.format == "text":
+        style = Style.for_stream(args.color, sys.stdout)
         for f in findings:
-            print(f"{display_path(f.path)}:{f.line}:{f.column}: {f.code}: {f.message}")
-        if findings:
-            print(f"{len(findings)} finding(s)", file=sys.stderr)
+            where = style(display_path(f.path), "bold") + style(f":{f.line}:{f.column}:", "dim")
+            code = style(f.code, _GROUP_COLORS[CODES[f.code][0]], "bold")
+            print(f"{where} {code}: {f.message}")
+        print(summary(findings), file=sys.stderr)
     else:
         RENDERERS[args.format]([findings_table(findings)], sys.stdout)
     return 1 if findings else 0

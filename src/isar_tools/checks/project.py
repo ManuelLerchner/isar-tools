@@ -23,7 +23,7 @@ def _directories(session: Session) -> list[Finding]:
                 root,
                 spec.dir,
                 "missing-directory",
-                f"session directory {spec.dir.text!r} of {session.name} does not exist",
+                f"no directory {spec.dir.text} for session {session.name}",
             )
         )
     for name in spec.directories:
@@ -33,7 +33,7 @@ def _directories(session: Session) -> list[Finding]:
                     root,
                     name,
                     "missing-directory",
-                    f"directories entry {name.text!r} of {session.name} does not exist",
+                    f"no directory {name.text} for session {session.name}",
                 )
             )
     for directory, name in spec.document_files:
@@ -45,7 +45,7 @@ def _directories(session: Session) -> list[Finding]:
                     root,
                     name,
                     "missing-document-file",
-                    f"document file {name.text!r} of {session.name} not found in {directory!r}",
+                    f"no document file {directory}/{name.text} for session {session.name}",
                 )
             )
     return findings
@@ -72,8 +72,8 @@ def _duplicate_names(project: Project, session: Session) -> list[Finding]:
                     session.root.lines.line(session.spec.name.start),
                     session.root.lines.column(session.spec.name.start),
                     "duplicate-theory-name",
-                    f"session {session.name} has two theories named {stem!r} on its "
-                    f"search path ({where}); Isabelle builds one and ignores the other",
+                    f"two theories {stem} on the search path of session {session.name} "
+                    f"({where}); only one is built",
                 )
             )
     return findings
@@ -91,7 +91,7 @@ def check_project(project: Project) -> list[Finding]:
                 1,
                 1,
                 "unreached-theory",
-                f"on the search path of session {session.name}, but no session builds it",
+                f"not built by any session (on the search path of {session.name})",
             )
         )
     return findings

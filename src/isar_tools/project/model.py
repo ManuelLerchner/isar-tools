@@ -220,8 +220,7 @@ class Project:
                     self._entry_problem(
                         session,
                         entry.name,
-                        f"theory entry {text!r} of session "
-                        f"{session.name} has no .thy file on the session's search path",
+                        f"no {text}.thy on the search path of session {session.name}",
                     )
                 else:
                     session.theories[Path(text).name] = path
@@ -239,8 +238,7 @@ class Project:
                     self._entry_problem(
                         session,
                         entry.name,
-                        f"theory entry {entry.name.text!r}: session "
-                        f"{qualifier} has no theory {base}",
+                        f"session {qualifier} has no theory {base}",
                     )
 
     def _entry_problem(self, session: Session, name: Name, message: str) -> None:

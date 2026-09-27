@@ -31,7 +31,7 @@ def run(capsys: pytest.CaptureFixture[str], *args: str) -> tuple[int, str, str]:
 def test_default_groups(project: Path, capsys: pytest.CaptureFixture[str], golden: Golden) -> None:
     status, out, err = run(capsys, "A.thy", "B.thy")
     assert status == 1
-    assert err == "3 finding(s)\n"
+    assert err == "3 findings: 2 document-argument, 1 unfinished-proof\n"
     golden("check/default.txt", out)
 
 
@@ -40,18 +40,19 @@ def test_group_and_ignore(project: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert status == 1
     assert out.startswith("A.thy:2:13: non-ascii: non-ASCII character '⟹'")
     status, out, err = run(capsys, "symbols", "A.thy", "--ignore", "non-ascii")
-    assert (status, out, err) == (0, "", "")
+    assert (status, out, err) == (0, "", "no findings\n")
 
 
 def test_project_group_and_include(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     status, out, _ = run(capsys, "--group", "project", ".")
     assert status == 1
     assert out.splitlines() == [
-        "ROOT:1:31: missing-directory: directories entry 'gone' of S does not exist",
+        "ROOT:1:31: missing-directory: no directory gone for session S",
     ]
     status, out, _ = run(capsys, "--group", "syntax", "B.thy")
     assert status == 1
     assert "unexpected 'libcmd' after the text of text" in out
+    assert "pass its directory with -d" in out
     status, out, _ = run(capsys, "--group", "syntax", "B.thy", "-d", "lib")
     assert (status, out) == (0, "")
 
@@ -78,3 +79,13 @@ def test_help_lists_codes(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["check", "--help"])
     assert "unreached-theory" in capsys.readouterr().out
+
+
+def test_color_and_singular_summary(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    status, out, err = run(capsys, "--group", "proofs", "--color", "always", "A.thy")
+    assert status == 1
+    assert out == (
+        "\x1b[1mA.thy\x1b[0m\x1b[2m:2:18:\x1b[0m \x1b[33;1munfinished-proof\x1b[0m: "
+        "sorry leaves the goal unproved\n"
+    )
+    assert err == "1 finding: 1 unfinished-proof\n"

@@ -1,7 +1,6 @@
 """``isar symbols``: convert between ASCII and Unicode symbol spellings."""
 
 import argparse
-import difflib
 import sys
 from pathlib import Path
 
@@ -9,6 +8,7 @@ from isar_tools.project.workspace import collect
 from isar_tools.render import display_path
 from isar_tools.source.files import read_source, write_source
 from isar_tools.source.symbols import decode, encode
+from isar_tools.style import Style, add_color_option, write_diff
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:  # pyright: ignore[reportPrivateUsage]
@@ -35,6 +35,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     mode.add_argument(
         "--diff", action="store_true", help="print a unified diff instead of writing; exit 1 if any"
     )
+    add_color_option(normalize)
     normalize.set_defaults(func=run_normalize)
 
 
@@ -51,14 +52,7 @@ def run_normalize(args: argparse.Namespace) -> int:
         if args.check:
             print(name)
         elif args.diff:
-            sys.stdout.writelines(
-                difflib.unified_diff(
-                    before.splitlines(keepends=True),
-                    after.splitlines(keepends=True),
-                    fromfile=f"a/{name}",
-                    tofile=f"b/{name}",
-                )
-            )
+            write_diff(before, after, name, sys.stdout, Style.for_stream(args.color, sys.stdout))
         else:
             write_source(source.path, after)
             print(f"normalized {name}", file=sys.stderr)
