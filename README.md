@@ -5,7 +5,7 @@ checks, and statistics. Pure Python. Works on `.thy` and `ROOT` files without
 running Isabelle.
 
 ![Terminal recording: isar stats prints session and theory tables for a small
-demo project, isar check reports a sorry and a missing theory, isar fmt --diff
+demo project, isar check reports an unfinished proof (sorry), isar fmt --diff
 indents a proof and removes trailing whitespace and extra blank lines, and isar
 project graph prints the theory import graph.](docs/demo/demo.gif)
 
