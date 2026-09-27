@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `--exclude GLOB` for `fmt`, `check`, and `stats`: leave out matching files (`**`
+  spans directories), also when named on the command line.
+- Configuration file: `[tool.isar]` in `pyproject.toml`, or `isar.toml`, found upward
+  from the working directory. `include` (`-d` directories, `$VAR` expanded, absent ones
+  skipped with a note), `exclude`, and defaults for `fmt` (`max-line-length`, `indent`,
+  `max-blank-lines`, `normalize`), `check` (`groups`, `ignore`, `allow`), and `stats`
+  (`max-line-length`, `watch`). Command-line options take precedence.
 - A directory argument skips subdirectories that have their own `ROOT` or `ROOTS` but
   hold none of the project's sessions (a vendored submodule not listed in `ROOTS`), with
   a note on stderr; pass such a directory with `-d` to resolve against it. Before, its

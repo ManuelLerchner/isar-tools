@@ -10,6 +10,7 @@ from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
+from isar_tools.config import add_exclude_option
 from isar_tools.project.workspace import add_include_option, load
 from isar_tools.render import RENDERERS, Column, Table, display_path
 from isar_tools.style import Style, add_color_option
@@ -58,6 +59,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     check.add_argument("--format", choices=FORMATS, default="text")
     add_color_option(check)
     add_include_option(check)
+    add_exclude_option(check)
     check.set_defaults(func=run)
 
 
@@ -71,7 +73,7 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 def collect_findings(args: argparse.Namespace) -> list[Finding]:
     groups: set[str] = set(args.groups or DEFAULT_GROUPS)
-    workspace = load(args.paths, args.include)
+    workspace = load(args.paths, args.include, args.exclude)
     workspace.note_skipped("check")
     findings: list[Finding] = []
     if "project" in groups:

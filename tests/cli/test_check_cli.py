@@ -130,3 +130,24 @@ def test_nested_project_is_skipped_with_a_note(
     assert "note: skipped vendor/lib: another project" in capsys.readouterr().err
     assert main(["check", "-d", "vendor/lib", "."]) == 0
     assert "note" not in capsys.readouterr().err
+
+
+def test_configuration_file(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "pyproject.toml": '[tool.isar.check]\ngroups = ["proofs"]\nignore = ["oops"]\n',
+            "ROOT": "session S = HOL + theories A Missing",
+            "A.thy": "theory A imports Main begin\nlemma x: True sorry\nlemma y: True oops\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    # Only the proofs group (no missing-theory), and oops ignored.
+    assert main(["check", "--format", "json", "."]) == 1
+    codes = [f["code"] for f in json.loads(capsys.readouterr().out)["findings"]]
+    assert codes == ["unfinished-proof"]
+    # --group on the command line replaces the file's groups.
+    assert main(["check", "--group", "project", "--format", "json", "."]) == 1
+    codes = [f["code"] for f in json.loads(capsys.readouterr().out)["findings"]]
+    assert codes == ["missing-theory"]

@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from isar_tools.config import add_exclude_option
 from isar_tools.formatter.formatter import FormatError, Options
 from isar_tools.formatter.wrap import format_source
 from isar_tools.project.workspace import add_include_option, load
@@ -37,13 +38,13 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     fmt.add_argument(
         "--normalize",
         action="store_true",
+        default=None,
         help="set indentation exactly; by default lines are only indented further, never less",
     )
-    fmt.add_argument("--indent", type=int, default=2, metavar="N", help="indent step (default: 2)")
+    fmt.add_argument("--indent", type=int, metavar="N", help="indent step (default: 2)")
     fmt.add_argument(
         "--max-blank-lines",
         type=int,
-        default=2,
         metavar="N",
         help="collapse longer runs of blank lines (default: 2)",
     )
@@ -51,9 +52,11 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "--max-line-length",
         type=int,
         metavar="N",
-        help="wrap lines longer than N Isabelle symbols at spaces between tokens (default: off)",
+        help="wrap lines longer than N Isabelle symbols at spaces between tokens "
+        "(default: off; 0 turns off wrapping set in the configuration file)",
     )
     add_include_option(fmt)
+    add_exclude_option(fmt)
     add_color_option(fmt)
     fmt.set_defaults(func=run)
 
@@ -69,7 +72,7 @@ def run(args: argparse.Namespace) -> int:
         return _stdin(options)
     status = 0
     changed = 0
-    workspace = load(args.paths, args.include)
+    workspace = load(args.paths, args.include, args.exclude)
     workspace.note_skipped("fmt")
     for source in workspace.sources:
         name = display_path(source.path)

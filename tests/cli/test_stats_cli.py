@@ -137,3 +137,24 @@ def test_paths_outside_cwd_are_absolute(
 )
 def test_percentile(xs: list[int], q: float, expected: int) -> None:
     assert percentile(xs, q) == expected
+
+
+def test_configuration_file(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "isar.toml": '[stats]\nmax-line-length = 10\nwatch = ["blast"]\n',
+            "ROOT": "session S = HOL + theories A",
+            "A.thy": "theory A imports Main begin\nlemma x: True by blast\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["stats", "style", "--format", "json", "."]) == 0
+    (row,) = json.loads(capsys.readouterr().out)["style"]
+    assert row["long_lines"] == 2
+    assert row["methods"] == "blast=1"
+    # The command line wins over the file.
+    assert main(["stats", "style", "--max-line-length", "100", "--format", "json", "."]) == 0
+    (row,) = json.loads(capsys.readouterr().out)["style"]
+    assert row["long_lines"] == 0
