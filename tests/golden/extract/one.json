@@ -1,0 +1,12 @@
+[
+  {
+    "name": "B.l.succ_pos",
+    "qualified": "B.l.succ_pos",
+    "kind": "fact",
+    "command": "lemma",
+    "path": "B.thy",
+    "line": 3,
+    "end_line": 4,
+    "source": "lemma succ_pos: \"succ x > 0\"\n  by (rule A.succ_pos)\n"
+  }
+]
