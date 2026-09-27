@@ -87,11 +87,17 @@ _GREEK = [
     "Omega",
 ]
 # Symbols that count as letters: latin, script and fraktur (\<A>, \<AA>), and
-# greek except \<lambda>, which is a binder.
-_LETTER = r"(?:[A-Za-z]|\\<(?:[A-Za-z]{1,2}|" + "|".join(_GREEK) + r")>)"
-_QUASI = _LETTER + r"|[0-9_']|\\<\^(?:sub|isub|sup|isup|bold)>"
+# greek except \<lambda>, which is a binder. A doubled letter only: \<in> and
+# \<le> are operators.
+_DOUBLE = "|".join(c + c for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_LETTER = r"(?:[A-Za-z]|\\<(?:[A-Za-z]|" + _DOUBLE + "|" + "|".join(_GREEK) + r")>)"
+# Subscripts continue an identifier; superscripts (x\<^sup>2) do not.
+_QUASI = _LETTER + r"|[0-9_']|\\<\^(?:sub|isub|isup)>"
 _IDENT = rf"{_LETTER}(?:{_QUASI})*"
 _LONG = rf"{_IDENT}(?:\.{_IDENT})*"
+# An identifier, also inside inner-syntax text: letters (including symbol
+# letters such as \<gamma>), digits, `_`, `'`, and subscripts.
+IDENTIFIER_RE = re.compile(_IDENT)
 
 _WORD_RE = re.compile(rf"\?'?{_LONG}(?:\.[0-9]+)?|'{_IDENT}|{_LONG}|[0-9]+(?:\.[0-9]+)?")
 _NEWLINE_RE = re.compile(r"\r\n|\r|\n")

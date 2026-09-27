@@ -12,6 +12,18 @@
   declaration), `undocumented-heading` (no `text` right after or before a heading),
   `undocumented-locale` and `undocumented-class` (no `text` right before the declaration).
   `(* *)` comments, formal comments, and `text_raw` do not count as documentation.
+- `isar check locales` (opt-in group, code `locale-free-variable`): identifiers in the
+  terms of `locale` and unnamed `context` headers that are no parameter (own, `for`
+  clause, `defines`, or inherited from parent locales through imports), not bound in the
+  term, and not used anywhere else in the project or its `-d` imports; Isabelle would
+  generalize over them. Heuristic filter: at least four characters and an underscore.
+  `--allow NAME` (repeatable). Ported from Voblint's `check_locale_parameters.py`.
+- `isar project hierarchy` model: declarations also record `for` clause parameters,
+  `defines`, and term tokens; `context` headers parse too; `opening` ends a locale
+  expression.
+- Lexer: `\<in>`, `\<le>`, and other two-letter symbols are no longer identifier letters
+  (only doubled letters such as `\<AA>` are), and `\<^sup>`/`\<^bold>` no longer continue
+  an identifier.
 - `isar project hierarchy`: class and locale declarations (parents, fixes with type and
   notation, assumes, parameter sorts) as text, JSON, or DOT; `--root` follows parents
   through imports, including `-d` directories, and reports unresolved names.

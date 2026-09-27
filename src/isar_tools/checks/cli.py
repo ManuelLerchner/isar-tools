@@ -7,6 +7,7 @@ from pathlib import Path
 
 from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
+from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
 from isar_tools.project.workspace import add_include_option, load
@@ -34,7 +35,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         dest="groups",
         action="append",
         choices=GROUPS,
-        help="run this group of checks (repeatable; default: all but symbols and docs)",
+        help="run this group of checks (repeatable; default: all but symbols, docs, and locales)",
     )
     check.add_argument(
         "--ignore",
@@ -46,6 +47,13 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     )
     check.add_argument(
         "--include-comments", action="store_true", help="symbols: also check (* *) comments"
+    )
+    check.add_argument(
+        "--allow",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="locales: do not report this identifier (repeatable)",
     )
     check.add_argument("--format", choices=FORMATS, default="text")
     add_color_option(check)
@@ -81,6 +89,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
                 )
             if "docs" in groups:
                 findings += check_docs(source.path, theory)
+    if "locales" in groups:
+        findings += check_locales(workspace.sources, allow=args.allow)
     ignored = set(args.ignore)
     return sorted({f for f in findings if f.code not in ignored})
 
@@ -116,6 +126,7 @@ _GROUP_COLORS = {
     "syntax": "red",
     "symbols": "cyan",
     "docs": "green",
+    "locales": "blue",
 }
 
 
