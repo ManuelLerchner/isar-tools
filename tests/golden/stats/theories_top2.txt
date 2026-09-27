@@ -1,0 +1,5 @@
+Theories by name (top 2 of 3)
+session  theory  lines  code  doc  blank  defs  proofs  mean proof  max proof  long lines  unfinished  path
+-------  ------  -----  ----  ---  -----  ----  ------  ----------  ---------  ----------  ----------  ---------------
+Core     Basics      8     5    0      3     1       1         1.0          1           0           0  Core/Basics.thy
+Core     Big        19    14    1      4     0       2         4.0          7           0           1  Core/Big.thy

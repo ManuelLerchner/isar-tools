@@ -1,0 +1,22 @@
+{
+  "first": [
+    {
+      "name": "alpha",
+      "count": 3,
+      "ratio": 0.25
+    },
+    {
+      "name": "b|eta",
+      "count": 12,
+      "ratio": 1.0
+    }
+  ],
+  "second": [
+    {
+      "flag": true
+    },
+    {
+      "flag": false
+    }
+  ]
+}

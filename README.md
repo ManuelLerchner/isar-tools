@@ -4,7 +4,7 @@ Source tooling for Isabelle/Isar projects: a formatter, project and source
 checks, and statistics. Pure Python. Works on `.thy` and `ROOT` files without
 running Isabelle.
 
-Status: pre-alpha. The CLI skeleton exists; no command is implemented yet. See
+Status: pre-alpha. `isar stats` is implemented; the other commands are not yet. See
 [`docs/PLAN.md`](docs/PLAN.md) for scope and milestones.
 
 ## Commands (planned)
