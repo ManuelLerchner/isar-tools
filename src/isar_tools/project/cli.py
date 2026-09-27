@@ -2,17 +2,19 @@
 
 import argparse
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
-from typing import cast
+from typing import TextIO, cast
 
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
-from isar_tools.project.names import Entity, entities, matches, source
+from isar_tools.project.names import KINDS, Entity, entities, matches, source
 from isar_tools.project.workspace import InputError, add_include_option
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
+from isar_tools.source.symbols import decode
 from isar_tools.source.theory import parse_theory
 from isar_tools.style import Style, add_color_option, write_diff
 
@@ -59,6 +61,32 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     hierarchy.add_argument("--format", choices=("text", "json", "dot"), default="text")
     add_include_option(hierarchy)
     hierarchy.set_defaults(func=run_hierarchy)
+    names = views.add_parser(
+        "names",
+        help="named declarations with kind, location, and docstring",
+        description="Facts, constants, types, locales, classes, and bundles the project's "
+        "theories declare, with qualified names as Isabelle renders them "
+        "(Theory.locale.name) and the text block directly before each as its docstring. "
+        "--format markdown writes an index grouped by session and theory. With --name, "
+        "exit 1 if a name declares nothing, suggesting the qualified names that exist.",
+    )
+    names.add_argument("path", nargs="?", type=Path, default=Path(), help="project directory")
+    names.add_argument(
+        "--kind",
+        action="append",
+        choices=sorted(set(KINDS.values())),
+        help="only this kind (repeatable)",
+    )
+    names.add_argument(
+        "--name",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="only NAME, a base name or an exact qualified name (repeatable)",
+    )
+    names.add_argument("--format", choices=sorted(RENDERERS), default="text")
+    add_include_option(names)
+    names.set_defaults(func=run_names)
     extract = views.add_parser(
         "extract",
         help="the source of declarations, by name",
@@ -424,3 +452,97 @@ def _sync(args: argparse.Namespace, ok: dict[str, _Found]) -> int:
     if stale and args.check:
         print(f"{stale} snippet(s) differ from the theories", file=sys.stderr)
     return 1 if stale and args.check else 0
+
+
+def _qualified_hit(entity: Entity, name: str) -> bool:
+    """``name`` is the entity's base name or its exact qualified name: a
+    qualifier naming the wrong scope does not match."""
+    return name in (entity.name, entity.qualified)
+
+
+def names_table(project: Project, found: list[Entity], docs: bool) -> Table:
+    rows: list[dict[str, Cell]] = []
+    for e in found:
+        session = project.session_of(e.path)
+        rows.append(
+            {
+                "name": e.qualified,
+                "kind": e.kind,
+                "command": e.command,
+                "session": session.name if session is not None else "",
+                "path": display_path(e.path),
+                "line": e.line,
+                "end_line": e.end_line,
+                "doc": e.doc,
+            }
+        )
+    return Table(
+        "names",
+        "Declarations",
+        [
+            Column("name", "name"),
+            Column("kind", "kind"),
+            Column("command", "command"),
+            Column("session", "session"),
+            Column("path", "path"),
+            Column("line", "line", True),
+            Column("end_line", "end", True),
+            *([Column("doc", "doc")] if docs else []),
+        ],
+        rows,
+    )
+
+
+_ANTIQUOTATION = re.compile(r"\\<\^\w+>(\\<open>|‹)(.*?)(\\<close>|›)|@\{\w+\s+([^}]*)\}")
+_CARTOUCHE = re.compile(r"(?:\\<open>|‹)(.*?)(?:\\<close>|›)")
+
+
+def _prose(doc: str) -> str:
+    """A docstring as one Markdown table cell: antiquotations and cartouches
+    as code, symbols as Unicode."""
+    text = _ANTIQUOTATION.sub(lambda m: f"`{(m.group(2) or m.group(4)).strip()}`", doc)
+    text = _CARTOUCHE.sub(lambda m: f"`{m.group(1).strip()}`", text)
+    return " ".join(decode(text).split()).replace("|", "\\|")
+
+
+def write_index(project: Project, found: list[Entity], out: TextIO) -> None:
+    out.write("# Declarations\n")
+    session_name = ""
+    path: Path | None = None
+    for e in found:
+        session = project.session_of(e.path)
+        name = session.name if session is not None else ""
+        if name != session_name or path is None:
+            session_name = name
+            out.write(f"\n## Session {name}\n")
+        if e.path != path:
+            path = e.path
+            out.write(f"\n### {e.theory} (`{display_path(e.path)}`)\n\n")
+            out.write("| Name | Kind | Line | Description |\n| --- | --- | ---: | --- |\n")
+        local = f"{e.scope}.{e.name}" if e.scope else e.name
+        out.write(f"| `{decode(local)}` | {e.command} | {e.line} | {_prose(e.doc)} |\n")
+
+
+def run_names(args: argparse.Namespace) -> int:
+    project = _load(args)
+    found = [e for e, _ in _entities(project)]
+    if args.kind:
+        found = [e for e in found if e.kind in args.kind]
+    missing = 0
+    if args.name:
+        for name in args.name:
+            if any(_qualified_hit(e, name) for e in found):
+                continue
+            missing += 1
+            base = name.rpartition(".")[2]
+            near = sorted({e.qualified for e in found if e.name == base})
+            hint = f"; did you mean {', '.join(near)}?" if near else ""
+            print(f"isar project names: {name}: no declaration{hint}", file=sys.stderr)
+        found = [e for e in found if any(_qualified_hit(e, n) for n in args.name)]
+    if args.format == "markdown":
+        write_index(project, found, sys.stdout)
+    else:
+        # Docstrings span lines, which a text table cannot show.
+        table = names_table(project, found, docs=args.format != "text")
+        RENDERERS[args.format]([table], sys.stdout)
+    return 1 if missing else 0

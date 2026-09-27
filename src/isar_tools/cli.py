@@ -6,6 +6,7 @@ diagnostics to stderr.
 """
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from importlib.metadata import version
@@ -46,3 +47,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except InputError as error:
         print(f"isar {args.command}: {error}", file=sys.stderr)
         return EXIT_USAGE
+    except BrokenPipeError:
+        # The reader went away (`isar ... | head`): stop quietly. Point stdout
+        # at devnull so the interpreter's final flush does not fail again.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 1

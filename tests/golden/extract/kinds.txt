@@ -1,0 +1,5 @@
+Declarations
+name    kind      command     session  path   line  end
+------  --------  ----------  -------  -----  ----  ---
+A.succ  constant  definition  S        A.thy     2    3
+B.l     locale    locale      S        B.thy     2    2
