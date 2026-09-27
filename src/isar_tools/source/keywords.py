@@ -12,6 +12,9 @@ declaration maps onto them without translation.
 """
 
 from enum import StrEnum
+from functools import cache
+
+from isar_tools.source import afp_commands
 
 
 class CommandKind(StrEnum):
@@ -185,13 +188,29 @@ IMPORTED_COMMANDS: dict[str, dict[str, CommandKind]] = {
 }
 
 
+@cache
+def _afp_commands(session: str) -> dict[str, CommandKind]:
+    index = afp_commands.SESSIONS.get(session)
+    if index is None:
+        return {}
+    return {name: CommandKind(kind) for name, kind in afp_commands.TABLES[index]}
+
+
 def commands_of_import(name: str) -> dict[str, CommandKind]:
-    """Commands an import of a distribution theory makes available.
+    """Commands an import of a distribution or AFP theory makes available.
 
     ``name`` is an import as written, e.g. ``HOLCF``, ``"HOL-Eisbach.Eisbach"``,
-    or ``"HOL-Library.Time_Commands"``.
+    ``"HOL-Library.Time_Commands"``, ``"Deriving.Derive"``, or a path such as
+    ``"$AFP/Deriving/Derive"`` (an AFP entry's directory is its session's name).
+    Imports resolved on the session path add their theories' declarations on
+    top of this, so the tables only matter for sessions that are not there.
     """
+    session = name.split(".", 1)[0]
+    parts = name.split("/")
+    entry = parts[-2] if len(parts) > 1 else session
     return {
-        **IMPORTED_COMMANDS.get(name.split(".", 1)[0], {}),
+        **_afp_commands(entry),
+        **_afp_commands(session),
+        **IMPORTED_COMMANDS.get(session, {}),
         **IMPORTED_COMMANDS.get(name, {}),
     }

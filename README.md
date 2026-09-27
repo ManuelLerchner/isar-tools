@@ -117,9 +117,11 @@ name. Inner syntax is approximated lexically: see `isar_tools/checks/locales.py`
 ### Commands of other sessions
 
 Whether a word is an Isar command depends on the theories a file imports. The
-built-in table covers Pure and HOL, and commands declared in the theory headers
-of the project are found automatically. For commands of other projects, such as
-AFP entries, pass their directory with `-d`, as with `isabelle build -d`:
+built-in table covers Pure and HOL, commands declared in the theory headers of
+the project are found automatically, and a generated table covers the commands
+of AFP entries (such as `derive` from `Deriving`), so no AFP checkout is needed.
+For commands of other projects, or of an AFP newer than the table, pass their
+directory with `-d`, as with `isabelle build -d`:
 
 ```sh
 isar check -d ~/afp/thys .
@@ -200,8 +202,10 @@ file is named on the command line (as a git hook does).
 - Nothing runs Isabelle, so nothing is type-checked or proved. A formatted file
   is guaranteed to contain the same tokens; building it is the project's CI's
   job.
-- The built-in command table is hand-written. A command of a session that is
-  neither built in nor passed with `-d` is read as part of the previous command.
+- The built-in command table is hand-written, and the AFP table is generated
+  from one AFP revision (`scripts/gen_afp_commands.py`). A command of a session
+  that is in neither and not passed with `-d` is read as part of the previous
+  command.
 - `project extract` finds names that commands declare; derived names
   (`foo_def`, `foo.simps`) and names made by interpretations are not found.
 - `project hierarchy` follows declared parents, not `sublocale`, `subclass`, or

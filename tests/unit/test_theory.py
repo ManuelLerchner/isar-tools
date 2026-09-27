@@ -259,6 +259,18 @@ def test_commands_of_import() -> None:
     assert commands_of_import("HOL-Library.Multiset") == {}
 
 
+def test_commands_of_afp_imports() -> None:
+    """AFP commands are known without an AFP checkout (generated table)."""
+    assert commands_of_import("Deriving.Compare_Order_Instances")["derive"] is K.THY_DECL
+    assert commands_of_import("Deriving")["derive"] is K.THY_DECL
+    # Old-style path imports name the entry's directory, which is its session.
+    assert commands_of_import("$AFP/Deriving/Derive")["derive"] is K.THY_DECL
+    assert commands_of_import("../Deriving/Derive")["derive"] is K.THY_DECL
+    assert commands_of_import("No_Such_Entry.T") == {}
+    theory = parse_theory('theory A imports "Deriving.Derive" begin\nderive linorder t\nend')
+    assert [c.name for c in theory.commands] == ["theory", "derive", "end"]
+
+
 def test_theory_uses_imported_session_commands() -> None:
     theory = parse_theory('theory A imports "HOL-Eisbach.Eisbach" begin\nmethod m = simp\nend')
     assert [c.name for c in theory.commands] == ["theory", "method", "end"]
