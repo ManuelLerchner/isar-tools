@@ -227,8 +227,10 @@ def entities(theory: Theory, name: str, path: Path) -> Iterator[Entity]:
 
 
 def source(theory: Theory, entity: Entity) -> str:
-    """The entity's source text, dedented, with one final newline."""
-    return textwrap.dedent(theory.text[entity.start : entity.end]).rstrip() + "\n"
+    """The entity's source text, dedented, with ``\\n`` line breaks and one
+    final newline, so it does not depend on the line endings of a checkout."""
+    text = theory.text[entity.start : entity.end].replace("\r\n", "\n").replace("\r", "\n")
+    return textwrap.dedent(text).rstrip() + "\n"
 
 
 def matches(entity: Entity, name: str) -> bool:

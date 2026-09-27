@@ -132,3 +132,10 @@ def test_source_dedents() -> None:
 def test_matches(found: dict[str, Entity], name: str, expected: bool) -> None:
     assert matches(found["T.loc.in_loc"], name) is expected
     assert matches(found["T.after"], "loc.after") is False
+
+
+def test_source_line_endings() -> None:
+    text = 'theory T imports Main begin\r\nlemma x: "A"\r\n  by simp\rend\n'
+    theory = parse_theory(text)
+    (entity,) = entities(theory, "T", P)
+    assert source(theory, entity) == 'lemma x: "A"\n  by simp\n'
