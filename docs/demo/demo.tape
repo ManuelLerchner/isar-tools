@@ -12,10 +12,10 @@ Require isar
 Set Shell "bash"
 Set FontSize 15
 Set Width 1280
-Set Height 480
+Set Height 560
 Set Padding 20
 Set Framerate 12
-Set TypingSpeed 35ms
+Set TypingSpeed 20ms
 Set Theme "Catppuccin Mocha"
 Set CursorBlink false
 
@@ -25,9 +25,9 @@ Enter
 Show
 
 Type "isar stats"
-Sleep 300ms
+Sleep 200ms
 Enter
-Sleep 4s
+Sleep 2.5s
 
 Hide
 Type "clear"
@@ -35,17 +35,17 @@ Enter
 Show
 
 Type "isar check"
-Sleep 300ms
+Sleep 200ms
 Enter
-Sleep 3.5s
+Sleep 2.5s
 
 Hide
 Type "clear"
 Enter
 Show
 
-Type "isar project graph --theories"
-Sleep 300ms
+Type "isar fmt --diff Lists.thy"
+Sleep 200ms
 Enter
 Sleep 3s
 
@@ -54,7 +54,7 @@ Type "clear"
 Enter
 Show
 
-Type "isar symbols normalize --diff Arith.thy"
-Sleep 300ms
+Type "isar project graph --theories"
+Sleep 200ms
 Enter
-Sleep 4.5s
+Sleep 2s
