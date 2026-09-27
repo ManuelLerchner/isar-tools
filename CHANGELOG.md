@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-09-27)
 
 - Install from conda-forge: `pixi global install isar-tools` or
   `conda install -c conda-forge isar-tools`.
