@@ -37,10 +37,15 @@ builds and publishes.
 The first release goes through
 [staged-recipes](https://github.com/conda-forge/staged-recipes): add
 `recipes/isar-tools/recipe.yaml` in a fork and open a pull request. The
-recipe below is a template in the v1 (`recipe.yaml`) format for a `noarch:
-python` package; compare it with the current example in staged-recipes
-before submitting, since conda-forge's conventions change. The sha256 is the
-one PyPI lists for the sdist.
+recipe below, in the v1 (`recipe.yaml`) format for a `noarch: python`
+package, built 0.1.0 with rattler-build and passed its tests (imports on the
+minimum and newest Python, `pip check`, the CLI, and the test suite from the
+sdist). `python_min` comes from conda-forge's global pinning; the linter asks
+recipes not to repeat it. The sha256 is the one PyPI lists for the sdist. To
+build it locally:
+`rattler-build build --recipe recipe.yaml -c conda-forge --variant python_min=3.11`.
+`grayskull pypi isar-tools --use-v1-format --strict-conda-forge` generates the
+same recipe without the extra tests.
 
 ```yaml
 schema_version: 1
