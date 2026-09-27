@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-from isar_tools.source.files import read_source
 from isar_tools.source.keywords import (
     BUILTIN_COMMANDS,
     KIND_NAMES,
@@ -177,13 +176,17 @@ def parse_header(tokens: Iterable[Token]) -> Header | None:
             toks.append(tok)
         if toks and tok.kind is Kind.WORD and tok.text == "begin":
             break
-    if len(toks) < 2:
+    # Document tags come before the name: `theory %invisible All`.
+    i = 1
+    while i + 1 < len(toks) and toks[i].text == "%":
+        i += 2
+    if i >= len(toks):
         return None
-    name = Name(unquote(toks[1]), toks[1].start)
+    name = Name(unquote(toks[i]), toks[i].start)
     imports: list[Name] = []
     keywords: list[KeywordDecl] = []
     begin = -1
-    i = 2
+    i += 1
     section = ""
     while i < len(toks):
         tok = toks[i]
@@ -204,8 +207,10 @@ def parse_header(tokens: Iterable[Token]) -> Header | None:
 
 
 def read_header(path: Path) -> Header | None:
-    """Parse only the header of a theory file."""
-    return parse_header(iter_tokens(read_source(path)))
+    """Parse only the header of a theory file. Bytes that are not UTF-8 are
+    replaced: the header is still worth reading, and `isar check` reports the
+    encoding as `invalid-utf8`."""
+    return parse_header(iter_tokens(path.read_bytes().decode("utf-8", errors="replace")))
 
 
 def keyword_table(

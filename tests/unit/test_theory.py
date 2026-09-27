@@ -274,3 +274,11 @@ def test_commands_of_afp_imports() -> None:
 def test_theory_uses_imported_session_commands() -> None:
     theory = parse_theory('theory A imports "HOL-Eisbach.Eisbach" begin\nmethod m = simp\nend')
     assert [c.name for c in theory.commands] == ["theory", "method", "end"]
+
+
+def test_header_with_document_tag() -> None:
+    header = parse_header(tokenize("theory %invisible All imports Main begin end"))
+    assert header is not None
+    assert header.name.text == "All"
+    assert [i.text for i in header.imports] == ["Main"]
+    assert parse_header(tokenize("theory %invisible")) is None
