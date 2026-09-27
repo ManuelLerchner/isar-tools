@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
+from isar_tools.source.files import read_source
 from isar_tools.source.lexer import Kind, LineIndex, Token, tokenize
 from isar_tools.source.theory import Name, significant, unquote
 
@@ -60,7 +61,9 @@ class RootSession:
     directories: list[Name] = field(default_factory=list[Name])
     theories: list[TheoryEntry] = field(default_factory=list[TheoryEntry])
     document_theories: list[Name] = field(default_factory=list[Name])
-    document_files: list[Name] = field(default_factory=list[Name])
+    # (directory relative to the session directory, file), as in
+    # `document_files (in "dir") "root.tex"`; the directory defaults to "document".
+    document_files: list[tuple[str, Name]] = field(default_factory=list[tuple[str, Name]])
     export_files: list[Name] = field(default_factory=list[Name])
 
 
@@ -226,22 +229,33 @@ class _Parser:
                 session.theories += self.theory_entries(options)
             elif keyword == "document_theories":
                 session.document_theories += self.names("theory name")
-            elif keyword in ("document_files", "export_files"):
+            elif keyword == "document_files":
+                directory = self.in_directory() if self.at("(") else "document"
+                session.document_files += [(directory, f) for f in self.names("file name")]
+            elif keyword == "export_files":
                 if self.at("("):
-                    self.bracketed("(", ")")
-                if keyword == "export_files" and self.at("["):
+                    self.in_directory()
+                if self.at("["):
                     self.bracketed("[", "]")
-                files = self.names("file name")
-                target = (
-                    session.document_files if keyword == "document_files" else session.export_files
-                )
-                target += files
+                session.export_files += self.names("file name")
             elif keyword == "export_classpath":
                 while self.is_name():
                     self.advance()
             else:
                 self.i -= 1
                 self.error(f"unexpected {tok.text!r} in session {session.name.text}")
+
+    def in_directory(self) -> str:
+        """``( in dir )``, returning ``dir``."""
+        self.advance()
+        if not self.at("in"):
+            self.error("expected in")
+        self.advance()
+        directory = self.name("directory").text
+        if not self.at(")"):
+            self.error("expected )")
+        self.advance()
+        return directory
 
     def options(self) -> str:
         if not self.at("["):
@@ -281,4 +295,4 @@ def parse_root(text: str, path: Path | None = None) -> RootFile:
 
 
 def read_root(path: Path) -> RootFile:
-    return parse_root(path.read_text(encoding="utf-8"), path)
+    return parse_root(read_source(path), path)

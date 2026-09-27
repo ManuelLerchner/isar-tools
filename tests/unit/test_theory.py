@@ -162,6 +162,12 @@ def test_modifier_before_non_command() -> None:
     assert [(c.name, c.kind) for c in theory.commands] == [("private", K.BEFORE_COMMAND)]
 
 
+def test_keyword_with_space() -> None:
+    table = {**BUILTIN_COMMANDS, "strictly {": K.PRF_OPEN, "st": K.PRF_ASM}
+    theory = parse_theory("strictly {\n  have x by simp\n}\nstrictly other\nst\nstrictly", table)
+    assert [c.name for c in theory.commands] == ["strictly {", "have", "by", "}", "st"]
+
+
 def test_undeclared_symbolic_prefix_is_not_part_of_the_keyword() -> None:
     theory = parse_theory("lemma x: A @proof\n")
     assert [c.name for c in theory.commands] == ["lemma", "proof"]

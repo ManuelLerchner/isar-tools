@@ -1,0 +1,10 @@
+digraph isabelle {
+  "Core";
+  "App-Main";
+  "Again";
+  "Bare";
+  "Core" -> "HOL";
+  "Core" -> "HOL-Library" [style=dashed];
+  "App-Main" -> "Core";
+  "Again" -> "Core";
+}

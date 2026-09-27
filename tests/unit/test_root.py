@@ -22,7 +22,7 @@ session "My-Session" (main timing) in "src" = "HOL-Library" +
     Global (global)
     "Other.Imported"
   document_theories Doc
-  document_files (in "document") "root.tex" "root.bib"
+  document_files (in "doc") "root.tex" "root.bib"
   export_files (in ".") [1] "*:**.ML"
   export_classpath "lib.jar"
 
@@ -63,12 +63,15 @@ def test_full_session() -> None:
         ("Other.Imported", False, ""),
     ]
     assert [t.text for t in first.document_theories] == ["Doc"]
-    assert [f.text for f in first.document_files] == ["root.tex", "root.bib"]
+    assert [(d, f.text) for d, f in first.document_files] == [
+        ("doc", "root.tex"),
+        ("doc", "root.bib"),
+    ]
     assert [f.text for f in first.export_files] == ["*:**.ML"]
     assert child.parent is not None
     assert child.parent.text == "My-Session"
     assert [(t.name.text, t.global_) for t in child.theories] == [("Kid", True)]
-    assert [f.text for f in child.document_files] == ["b.tex"]
+    assert [(d, f.text) for d, f in child.document_files] == [("document", "b.tex")]
     assert [f.text for f in child.export_files] == ["out"]
     assert top.parent is None
     assert top.chapter == "AFP"
@@ -103,6 +106,8 @@ def test_positions() -> None:
         ("stray session A = HOL + theories T", ["unexpected 'stray'; expected session or chapter"]),
         ('session A = HOL + description "open', ["expected description", "unterminated"]),
         ("chapter", ["expected chapter name"]),
+        ("session A = HOL + document_files (at x) f", ["expected in"]),
+        ("session A = HOL + document_files (in x f", ["expected )"]),
     ],
 )
 def test_diagnostics(text: str, expected: list[str]) -> None:

@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from isar_tools.render import Cell, Column, Table
+from isar_tools.render import Cell, Column, Table, display_path
 from isar_tools.stats.metrics import ProofStats, TheoryStats
 
 # Commands that introduce a definition, datatype, or other named entity.
@@ -55,15 +55,6 @@ class Entry:
     @property
     def theory(self) -> str:
         return self.stats.name or self.path.stem
-
-
-def display_path(path: Path) -> str:
-    """``path`` relative to the working directory if below it, else absolute,
-    with ``/`` separators on every platform so output is stable."""
-    try:
-        return path.relative_to(Path.cwd()).as_posix()
-    except ValueError:
-        return path.as_posix()
 
 
 def _mean(xs: Sequence[int]) -> float:

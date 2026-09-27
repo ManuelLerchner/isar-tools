@@ -124,14 +124,18 @@ session = HOL
     project = Project.load(base)
     root = base / "ROOT"
     assert project.problems == [
-        Problem(root, 10, "expected session name"),
-        Problem(root, 9, "duplicate session B"),
+        Problem(root, 10, 9, "root-syntax", "expected session name"),
+        Problem(root, 9, 9, "duplicate-session", "duplicate session B"),
         Problem(
             root,
             4,
+            5,
+            "missing-theory",
             "theory entry 'Missing' of session A has no .thy file on the session's search path",
         ),
-        Problem(root, 6, "theory entry 'B.Nope': session B has no theory Nope"),
+        Problem(
+            root, 6, 5, "missing-theory", "theory entry 'B.Nope': session B has no theory Nope"
+        ),
     ]
     assert project.header(base / "Headless.thy") is None
     assert project.keywords_for(base / "Headless.thy")["lemma"] is CommandKind.THY_GOAL_STMT
@@ -171,4 +175,4 @@ def test_split_qualified(name: str, expected: tuple[str, str]) -> None:
 
 
 def test_problem_is_value(tmp_path: Path) -> None:
-    assert Problem(tmp_path, 1, "m") == Problem(tmp_path, 1, "m")
+    assert Problem(tmp_path, 1, 1, "c", "m") == Problem(tmp_path, 1, 1, "c", "m")

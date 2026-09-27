@@ -8,6 +8,13 @@
   import resolution, reachability.
 - `isar stats` with views `summary`, `sessions`, `theories`, `proofs`, `commands`, and
   `style`, in text, Markdown, JSON, and CSV.
+- `isar check` with groups `project`, `proofs`, `syntax` (default) and `symbols`; stable
+  finding codes, `--ignore`, text/JSON/CSV output, exit status 1 on findings.
+- `isar symbols normalize` (ASCII or Unicode spelling; `--check`, `--diff`).
+- `isar project sessions|theories|graph` (graph as text, JSON, or DOT).
+- `-d DIR` on `stats`, `check`, and `project`: sessions of DIR resolve imports and
+  commands, like `isabelle build -d`.
+- Source files are read and written byte-exactly, so CRLF line endings survive.
 - Opt-in corpus tests (`pixi run corpus` with `ISAR_CORPUS`).
 - Repository scaffold: pixi environment, package skeleton, `isar` CLI with
   placeholder commands, tests, lint, type checking, and CI.

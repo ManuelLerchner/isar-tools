@@ -10,6 +10,9 @@ import sys
 from collections.abc import Sequence
 from importlib.metadata import version
 
+from isar_tools import symbols_cli
+from isar_tools.checks import cli as check_cli
+from isar_tools.project import cli as project_cli
 from isar_tools.project.workspace import InputError
 from isar_tools.stats import cli as stats_cli
 
@@ -20,9 +23,6 @@ EXIT_USAGE = 2
 # Commands not implemented yet.
 PLACEHOLDERS: dict[str, str] = {
     "fmt": "Format Isabelle/Isar source files",
-    "check": "Check project and source hygiene",
-    "project": "Inspect Isabelle project structure",
-    "symbols": "Inspect or normalize Isabelle symbols",
 }
 
 
@@ -36,6 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {version('isar-tools')}")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
     stats_cli.register(sub)
+    check_cli.register(sub)
+    project_cli.register(sub)
+    symbols_cli.register(sub)
     for name, summary in PLACEHOLDERS.items():
         sub.add_parser(name, help=summary, description=summary).set_defaults(func=_placeholder)
     return parser
@@ -43,7 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(stats_cli.normalize_argv(sys.argv[1:] if argv is None else argv))
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(check_cli.normalize_argv(stats_cli.normalize_argv(raw)))
     if args.command is None:
         parser.print_help(sys.stderr)
         return EXIT_USAGE

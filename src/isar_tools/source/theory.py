@@ -7,8 +7,10 @@ tokens themselves.
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
+from isar_tools.source.files import read_source
 from isar_tools.source.keywords import (
     BUILTIN_COMMANDS,
     KIND_NAMES,
@@ -203,7 +205,7 @@ def parse_header(tokens: Iterable[Token]) -> Header | None:
 
 def read_header(path: Path) -> Header | None:
     """Parse only the header of a theory file."""
-    return parse_header(iter_tokens(path.read_text(encoding="utf-8")))
+    return parse_header(iter_tokens(read_source(path)))
 
 
 def keyword_table(
@@ -222,45 +224,65 @@ def keyword_table(
     return table
 
 
-def _keyword_at(
-    tokens: list[Token], i: int, table: Mapping[str, CommandKind]
-) -> tuple[str, CommandKind | None]:
-    """The keyword starting at token ``i``, if any.
+@lru_cache(maxsize=4096)
+def _single_token(keyword: str) -> bool:
+    return len(tokenize(keyword)) == 1
 
-    A declared keyword may span a symbolic prefix and a word (``@proof``),
-    which the lexer splits in two.
-    """
+
+def _compounds(table: Mapping[str, CommandKind]) -> dict[str, list[tuple[str, CommandKind]]]:
+    """Declared keywords that the lexer splits into several tokens (``@proof``,
+    ``AOT_modally_strict {``), indexed by their first token, longest first."""
+    index: dict[str, list[tuple[str, CommandKind]]] = {}
+    for keyword, kind in table.items():
+        if keyword and not _single_token(keyword):
+            index.setdefault(tokenize(keyword)[0].text, []).append((keyword, kind))
+    for entries in index.values():
+        entries.sort(key=lambda e: -len(e[0]))
+    return index
+
+
+def _keyword_at(
+    tokens: list[Token],
+    i: int,
+    table: Mapping[str, CommandKind],
+    compounds: Mapping[str, list[tuple[str, CommandKind]]],
+) -> tuple[str, CommandKind | None, int]:
+    """The keyword starting at token ``i``: its text, its kind (None if no
+    keyword starts here), and the index of the token after it."""
     tok = tokens[i]
-    if tok.kind is Kind.SYM_IDENT and i + 1 < len(tokens):
-        nxt = tokens[i + 1]
-        if nxt.kind is Kind.WORD and (joined := tok.text + nxt.text) in table:
-            return joined, table[joined]
+    for keyword, kind in compounds.get(tok.text, ()):
+        text = ""
+        for j in range(i, len(tokens)):
+            text += tokens[j].text
+            if text == keyword:
+                return keyword, kind, j + 1
+            if not keyword.startswith(text):
+                break
     if tok.kind in _KEYWORD_KINDS:
-        return tok.text, table.get(tok.text)
-    return tok.text, None
+        return tok.text, table.get(tok.text), i + 1
+    return tok.text, None, i + 1
 
 
 def _segment(tokens: list[Token], table: Mapping[str, CommandKind]) -> list[Command]:
+    compounds = _compounds(table)
     commands: list[Command] = []
     start = -1
     last = -1  # index of the last significant token of the open command
     in_header = False
     prefixed = False
     skip_cartouche = False
-    skip_word = False  # second half of a keyword like `@proof`
+    keyword_end = 0  # tokens before this index belong to a compound keyword
     for i, tok in enumerate(tokens):
-        if tok.kind in IGNORABLE:
-            continue
-        if skip_word:
-            skip_word = False
-            last = i
+        if i < keyword_end or tok.kind in IGNORABLE:
+            if i < keyword_end:
+                last = i
             continue
         if skip_cartouche and tok.kind is Kind.CARTOUCHE:
             skip_cartouche = False
             last = i
             continue
         skip_cartouche = tok.kind is Kind.SYMBOL and tok.text in COMMENT_MARKERS
-        name, kind = _keyword_at(tokens, i, table)
+        _, kind, end = _keyword_at(tokens, i, table, compounds)
         if in_header:
             kind = None  # imports are names, even when they spell a command
             in_header = not (tok.kind is Kind.WORD and tok.text == "begin")
@@ -268,32 +290,40 @@ def _segment(tokens: list[Token], table: Mapping[str, CommandKind]) -> list[Comm
             kind = None  # looks like a command, but never starts one
         if kind is not None and not (prefixed and kind is not CommandKind.BEFORE_COMMAND):
             if start >= 0:
-                commands.append(_command(tokens, table, start, last + 1))
+                commands.append(_command(tokens, table, compounds, start, last + 1))
             start = i
             in_header = kind is CommandKind.THY_BEGIN
-        skip_word = kind is not None and name != tok.text
+        if kind is not None:
+            keyword_end = end
         # `private lemma ...`: the modifier opens the span of the next command.
         prefixed = kind is CommandKind.BEFORE_COMMAND
         last = i
     if start >= 0:
-        commands.append(_command(tokens, table, start, last + 1))
+        commands.append(_command(tokens, table, compounds, start, last + 1))
     return commands
 
 
 def _command(
-    tokens: list[Token], table: Mapping[str, CommandKind], first: int, stop: int
+    tokens: list[Token],
+    table: Mapping[str, CommandKind],
+    compounds: Mapping[str, list[tuple[str, CommandKind]]],
+    first: int,
+    stop: int,
 ) -> Command:
     """The command spanning ``tokens[first:stop]``. After ``before_command``
     modifiers (``private lemma``), name and kind are the modified command's."""
-    for i in range(first, stop):
+    i = first
+    while i < stop:
         if tokens[i].kind in IGNORABLE:
+            i += 1
             continue
-        name, kind = _keyword_at(tokens, i, table)
+        name, kind, end = _keyword_at(tokens, i, table, compounds)
         if kind is not CommandKind.BEFORE_COMMAND:
             if kind is not None:
                 return Command(name, kind, first, stop)
             break
-    name, kind = _keyword_at(tokens, first, table)
+        i = end
+    name, kind, _ = _keyword_at(tokens, first, table, compounds)
     assert kind is not None
     return Command(name, kind, first, stop)
 
@@ -328,6 +358,21 @@ def _goal_blocks(commands: list[Command]) -> Iterator[GoalBlock]:
 
 # Theory-level kinds that may also occur inside a proof.
 _IN_PROOF = (CommandKind.DOCUMENT_BODY, CommandKind.DOCUMENT_HEADING, CommandKind.DOCUMENT_RAW)
+
+
+def goal_name(theory: Theory, command: Command) -> str:
+    """The binding of a goal statement: ``foo`` in ``lemma foo[simp]: ...``."""
+    toks = list(significant(command.tokens(theory.tokens)))[1:]
+    if toks and toks[0].text == "(":  # target, as in `lemma (in loc) ...`
+        depth = 0
+        while toks:
+            tok = toks.pop(0)
+            depth += {"(": 1, ")": -1}.get(tok.text, 0)
+            if depth == 0:
+                break
+    if len(toks) >= 2 and toks[0].kind in (Kind.WORD, Kind.STRING) and toks[1].text in (":", "["):
+        return unquote(toks[0])
+    return ""
 
 
 def parse_theory(text: str, table: Mapping[str, CommandKind] | None = None) -> Theory:

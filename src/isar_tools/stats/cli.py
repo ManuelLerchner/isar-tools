@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from isar_tools.project.workspace import collect
+from isar_tools.project.workspace import add_include_option, collect
 from isar_tools.render import RENDERERS, Table
 from isar_tools.stats.metrics import theory_stats
 from isar_tools.stats.views import (
@@ -51,6 +51,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         metavar="METHOD",
         help=f"count uses of this proof method (repeatable; default: {' '.join(DEFAULT_WATCHED)})",
     )
+    add_include_option(parser)
 
 
 def _top(parser: argparse.ArgumentParser, default: int) -> None:
@@ -94,7 +95,7 @@ def normalize_argv(argv: Sequence[str]) -> list[str]:
 def run(args: argparse.Namespace) -> int:
     watched = frozenset(args.watch or DEFAULT_WATCHED)
     entries: list[Entry] = []
-    for source in collect(args.paths):
+    for source in collect(args.paths, args.include):
         if args.session and source.session not in args.session:
             continue
         stats = theory_stats(source.parse(), max_line_length=args.max_line_length, methods=watched)

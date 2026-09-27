@@ -6,11 +6,13 @@ whether or not a session reaches it. A file is parsed with the project of its
 directory.
 """
 
-from collections.abc import Iterable
+import argparse
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from isar_tools.project.model import SKIP_DIRS, Project
+from isar_tools.source.files import read_source
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.theory import Theory, parse_theory
 
@@ -31,7 +33,7 @@ class SourceFile:
         return self.project.keywords_for(self.path)
 
     def read(self) -> str:
-        return self.path.read_text(encoding="utf-8")
+        return read_source(self.path)
 
     def parse(self) -> Theory:
         return parse_theory(self.read(), self.keywords())
@@ -57,27 +59,58 @@ def project_root(path: Path) -> Path:
     return path.resolve().parent
 
 
-def collect(paths: Iterable[Path]) -> list[SourceFile]:
-    """Theory files named by ``paths``, each once, in argument order."""
+@dataclass(frozen=True)
+class Workspace:
+    sources: list[SourceFile]
+    # Projects of the directory arguments, in argument order. A file argument
+    # loads its project only to parse the file, so it adds none.
+    projects: list[Project]
+
+
+def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
+    """Theory files named by ``paths``, each once, in argument order, and the
+    projects they were loaded with. ``include`` directories resolve imports and
+    keywords, like ``isabelle build -d``."""
     found: dict[Path, SourceFile] = {}
     projects: dict[Path, Project] = {}
 
     def project_of(directory: Path) -> Project:
         directory = directory.resolve()
         if directory not in projects:
-            projects[directory] = Project.load(directory)
+            projects[directory] = Project.load(directory, include)
         return projects[directory]
 
+    named: list[Project] = []
     for path in paths:
         if path.is_dir():
             project = project_of(path)
+            if project not in named:
+                named.append(project)
             for thy in _thy_files(path):
                 found.setdefault(thy, SourceFile(thy, project))
         elif path.is_file() and path.suffix == ".thy":
             resolved = path.resolve()
             found.setdefault(resolved, SourceFile(resolved, project_of(project_root(resolved))))
         elif path.exists():
-            raise InputError(f"{path}: not a directory or .thy file")
+            raise InputError(f"{path.as_posix()}: not a directory or .thy file")
         else:
-            raise InputError(f"{path}: no such file or directory")
-    return list(found.values())
+            raise InputError(f"{path.as_posix()}: no such file or directory")
+    return Workspace(list(found.values()), named)
+
+
+def collect(paths: Iterable[Path], include: Sequence[Path] = ()) -> list[SourceFile]:
+    """Theory files named by ``paths``, each once, in argument order."""
+    return load(paths, include).sources
+
+
+def add_include_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-d",
+        dest="include",
+        action="append",
+        type=Path,
+        default=[],
+        metavar="DIR",
+        help="also read the sessions of DIR to resolve imports and commands, like "
+        "`isabelle build -d` (repeatable)",
+    )

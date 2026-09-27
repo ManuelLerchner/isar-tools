@@ -1,0 +1,18 @@
+{
+  "findings": [
+    {
+      "path": "A.thy",
+      "line": 2,
+      "column": 18,
+      "code": "unfinished-proof",
+      "message": "sorry leaves the goal unproved"
+    },
+    {
+      "path": "A.thy",
+      "line": 3,
+      "column": 1,
+      "code": "document-argument",
+      "message": "text expects a text argument, as in text \\<open>...\\<close>"
+    }
+  ]
+}

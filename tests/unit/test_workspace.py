@@ -1,6 +1,6 @@
 import pytest
 
-from isar_tools.project.workspace import NO_SESSION, InputError, collect, project_root
+from isar_tools.project.workspace import NO_SESSION, InputError, collect, load, project_root
 from isar_tools.source.keywords import CommandKind
 from tests.conftest import MakeProject
 
@@ -26,6 +26,18 @@ def test_directory(make_project: MakeProject) -> None:
     assert a.keywords()["kw"] is CommandKind.DIAG
     assert a.read().startswith("theory A")
     assert [c.name for c in a.parse().commands] == ["theory", "end"]
+
+
+def test_directory_twice_is_one_project(make_project: MakeProject) -> None:
+    base = make_project(FILES)
+    workspace = load([base, base])
+    assert len(workspace.projects) == 1
+    assert len(workspace.sources) == 3
+
+
+def test_file_arguments_add_no_projects(make_project: MakeProject) -> None:
+    base = make_project(FILES)
+    assert load([base / "A.thy"]).projects == []
 
 
 def test_files_use_the_nearest_project(make_project: MakeProject) -> None:
