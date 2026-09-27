@@ -103,12 +103,21 @@ def collect(paths: Iterable[Path], include: Sequence[Path] = ()) -> list[SourceF
     return load(paths, include).sources
 
 
+def _directory(value: str) -> Path:
+    """An existing directory: a mistyped ``-d`` must not silently drop the
+    commands and imports it was meant to provide."""
+    path = Path(value)
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(f"{value}: not a directory")
+    return path
+
+
 def add_include_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-d",
         dest="include",
         action="append",
-        type=Path,
+        type=_directory,
         default=[],
         metavar="DIR",
         help="also read the sessions of DIR to resolve imports and commands, like "
