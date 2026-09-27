@@ -1,0 +1,12 @@
+class numeric  (Own, own/Domain.thy:2)
+  extends lattice
+  sorts   order_top
+  fixes   gamma :: 'a::order_top \<Rightarrow> int set  ("\<gamma>")
+  assumes gamma_mono: a \<le> b \<Longrightarrow> \<gamma> a \<subseteq> \<gamma> b
+locale evaluator  (Own, own/Domain.thy:5)
+  sorts   numeric
+  fixes   eval :: 'd \<Rightarrow> 'a::numeric
+  assumes sound: P
+locale mono_evaluator  (Own, own/Domain.thy:8)
+  extends evaluator
+  assumes mono: Q

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `isar project hierarchy`: class and locale declarations (parents, fixes with type and
+  notation, assumes, parameter sorts) as text, JSON, or DOT; `--root` follows parents
+  through imports, including `-d` directories, and reports unresolved names.
+- Unqualified imports of global theory names (`Main`) resolve through the parent
+  session chain.
 - `isar check` prints a summary line (`2 findings: 1 missing-theory, ...`) and colours
   findings on a terminal; `fmt --diff` and `symbols normalize --diff` colour their diffs.
   `--color auto|always|never`; `NO_COLOR` is honoured. Finding messages are shorter.

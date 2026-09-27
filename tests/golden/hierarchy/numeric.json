@@ -1,0 +1,59 @@
+{
+  "declarations": [
+    {
+      "kind": "class",
+      "name": "lattice",
+      "session": "Base",
+      "external": true,
+      "path": "lib/Lattices.thy",
+      "line": 2,
+      "parents": [
+        "order"
+      ],
+      "sorts": [],
+      "fixes": [
+        {
+          "name": "inf",
+          "type": "'a \\<Rightarrow> 'a \\<Rightarrow> 'a",
+          "mixfix": "infixl \"\\<sqinter>\" 70",
+          "notation": "\\<sqinter>"
+        }
+      ],
+      "assumes": []
+    },
+    {
+      "kind": "class",
+      "name": "numeric",
+      "session": "Own",
+      "external": false,
+      "path": "own/Domain.thy",
+      "line": 2,
+      "parents": [
+        "lattice"
+      ],
+      "sorts": [
+        "order_top"
+      ],
+      "fixes": [
+        {
+          "name": "gamma",
+          "type": "'a::order_top \\<Rightarrow> int set",
+          "mixfix": "\"\\<gamma>\"",
+          "notation": "\\<gamma>"
+        }
+      ],
+      "assumes": [
+        {
+          "name": "gamma_mono",
+          "props": [
+            "a \\<le> b \\<Longrightarrow> \\<gamma> a \\<subseteq> \\<gamma> b"
+          ]
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    "order",
+    "order_top"
+  ]
+}

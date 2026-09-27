@@ -1,0 +1,6 @@
+digraph hierarchy {
+  node [shape=box];
+  "evaluator" [label="evaluator", style=dashed];
+  "mono_evaluator" [label="mono_evaluator", style=dashed];
+  "mono_evaluator" -> "evaluator" [arrowhead=empty];
+}
