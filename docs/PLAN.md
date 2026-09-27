@@ -264,7 +264,7 @@ the 3.11 floor.
 | M4        | done  | Plus `--max-line-length` wrapping and raise-only default indentation. Voblint formatted with `--max-line-length 100` builds with Isabelle (local round trip).                                           |
 | M5        | done  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
 | M6        | done  | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks); formatted Voblint builds. The AFP is not build-tested after formatting.                                                            |
-| M7        | ready | Packaging checked (twine, clean install, tests from the sdist); `docs/RELEASING.md`. Tag `v0.1.0` after PyPI trusted publishing is set up.                                                              |
+| M7        | done  | 0.1.0 on PyPI; conda-forge recipe submitted to staged-recipes.                                                                                                                                          |
 
 Beyond the plan: `isar project hierarchy` (class and locale declarations as
 data, for figures such as Voblint's domain tree) and `isar project extract`
