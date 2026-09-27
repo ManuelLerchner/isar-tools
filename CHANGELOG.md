@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `isar stats commands --by theory`: command counts per theory (session, theory,
+  command, count, path); `--by session` stays the default.
+- `isar stats build --default-budget N --project DIR`: every library session without its
+  own `--budget` is held to N elaborations inside other sessions, where library means not
+  a session of DIR. A new library dependency that gets re-elaborated then fails the check.
 - Commands of AFP entries are recognised without an AFP checkout: a table generated
   from the AFP (revision cfdc3d77e, 2026-09-02) lists the commands each AFP session
   makes visible to theories importing it, e.g. `derive` from `Deriving`. `-d` still
