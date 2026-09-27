@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from isar_tools.project.names import Entity, entities, matches, source
+from isar_tools.project.names import (
+    Entity,
+    entities,
+    interpretations,
+    interpreted,
+    matches,
+    source,
+)
 from isar_tools.source.theory import parse_theory
 
 SOURCE = r"""theory T imports Main begin
@@ -86,7 +93,10 @@ def test_names_kinds_and_scopes(found: dict[str, Entity]) -> None:
         "T.hidden": ("fact", "lemma"),
         "T.both": ("fact", "lemmas"),
         "T.rules": ("fact", "named_theorems"),
+        "T.point.x": ("constant", "record"),
         "T.loc": ("locale", "locale"),
+        "T.loc.n": ("constant", "fixes"),
+        "T.c_class.z": ("constant", "fixes"),
         "T.loc.in_loc": ("fact", "lemma"),
         "T.loc.anon": ("fact", "lemma"),
         "T.loc.ctx": ("fact", "theorem"),
@@ -139,3 +149,63 @@ def test_source_line_endings() -> None:
     theory = parse_theory(text)
     (entity,) = entities(theory, "T", P)
     assert source(theory, entity) == 'lemma x: "A"\n  by simp\n'
+
+
+DERIVED_SOURCE = r"""theory D imports Main begin
+definition f :: nat where "f = 0"
+fun g :: "nat \<Rightarrow> nat" where "g 0 = 0" | "g (Suc n) = g n"
+inductive ev :: "nat \<Rightarrow> bool" where
+  zero: "ev 0" | step: "ev n \<Longrightarrow> ev (Suc (Suc n))" | "ev 4"
+datatype t = A | B
+locale base = fixes b :: nat assumes pos: "b > 0"
+locale ext = base + fixes e :: nat assumes big: "e > b" and "e > 0"
+lemma (in base) b_nonzero: "b \<noteq> 0" using pos by simp
+interpretation one: base 1 by unfold_locales simp
+interpretation base 2 by unfold_locales simp
+context base begin
+interpretation inner: base 3 by unfold_locales simp
+end
+end
+"""
+
+
+def test_derived_names() -> None:
+    theory = parse_theory(DERIVED_SOURCE)
+    found = {e.qualified: e for e in entities(theory, "D", P, derived=True)}
+    derived = {q: e.derived_from for q, e in found.items() if e.derived_from}
+    assert derived["D.f_def"] == "D.f"
+    assert {"D.g.simps", "D.g.induct", "D.g.cases", "D.g.elims"} <= set(derived)
+    assert {"D.ev.intros", "D.ev.induct", "D.ev.zero", "D.ev.step"} <= set(derived)
+    assert {"D.t.induct", "D.t.inject", "D.t.distinct", "D.t.exhaust"} <= set(derived)
+    assert {"D.base_def", "D.base.intro"} <= set(derived)
+    assert {"D.ext_def", "D.ext.intro", "D.ext_axioms_def", "D.ext_axioms.intro"} <= set(derived)
+    assert "D.base_axioms_def" not in derived  # no parents
+    assert found["D.base.pos"].kind == "fact"
+    assert found["D.base.b"].kind == "constant"
+    # Without derived=True only declared names are listed.
+    assert not any(e.derived_from for e in entities(theory, "D", P))
+
+
+def test_inductive_without_where_has_no_rule_names() -> None:
+    theory = parse_theory("theory D imports Main begin\ninductive p :: bool\nend")
+    names = {e.name for e in entities(theory, "D", P, derived=True)}
+    assert names == {"p", "p.intros", "p.cases", "p.induct", "p.simps"}
+
+
+def test_record_without_equals() -> None:
+    theory = parse_theory("theory D imports Main begin\nrecord r\nend")
+    assert [e.name for e in entities(theory, "D", P)] == ["r"]
+
+
+def test_interpretations() -> None:
+    theory = parse_theory(DERIVED_SOURCE)
+    facts = list(entities(theory, "D", P, derived=True))
+    (interp,) = interpretations(theory, "D", P)  # unqualified and nested are skipped
+    assert (interp.qualifier, interp.locale, interp.line) == ("one", "base", 10)
+    made = {e.qualified: e.derived_from for e in interpreted(facts, interp)}
+    assert made == {"D.one.b_nonzero": "D.base.b_nonzero", "D.one.pos": "D.base.pos"}
+
+
+def test_optional_qualifier() -> None:
+    theory = parse_theory("theory D imports Main begin\ninterpretation q?: base 1 by simp\nend")
+    assert [i.qualifier for i in interpretations(theory, "D", P)] == ["q"]

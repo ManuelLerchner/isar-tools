@@ -18,9 +18,10 @@ by interpretations are not listed.
 
 import textwrap
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from isar_tools.project.hierarchy import parse_declaration
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import Kind, Token
 from isar_tools.source.theory import Command, Theory, significant, unquote
@@ -111,6 +112,7 @@ class Entity:
     start: int  # text offset where the extent starts (its line's start)
     end: int  # text offset after its last token
     doc: str  # the text block directly before; "" if none
+    derived_from: str = ""  # qualified name of the declaration this fact comes from
 
     @property
     def qualified(self) -> str:
@@ -185,8 +187,135 @@ def _doc(theory: Theory, command: Command | None) -> str:
     return textwrap.dedent(unquote(body)).strip() if body is not None else ""
 
 
-def entities(theory: Theory, name: str, path: Path) -> Iterator[Entity]:
-    """Every named declaration of ``theory`` (named ``name``, read from ``path``)."""
+# Facts a command derives from the name it binds: suffixes joined with `_` or `.`.
+DERIVED: dict[str, tuple[str, ...]] = {
+    "definition": ("_def",),
+    "lift_definition": ("_def", ".rep_eq", ".transfer"),
+    "primrec": (".simps",),
+    "fun": (".simps", ".induct", ".cases", ".elims"),
+    "function": (".psimps", ".pinduct", ".cases", ".pelims", ".simps", ".induct", ".elims"),
+    "inductive": (".intros", ".cases", ".induct", ".simps"),
+    "inductive_set": (".intros", ".cases", ".induct", ".simps"),
+    "coinductive": (".intros", ".cases", ".coinduct", ".simps"),
+    "coinductive_set": (".intros", ".cases", ".coinduct", ".simps"),
+    "datatype": (".induct", ".exhaust", ".cases", ".distinct", ".inject", ".simps", ".split"),
+    "codatatype": (".coinduct", ".exhaust", ".cases", ".distinct", ".inject", ".simps"),
+}
+_INDUCTIVE = frozenset({"inductive", "inductive_set", "coinductive", "coinductive_set"})
+_INTERPRETATIONS = frozenset({"interpretation", "global_interpretation"})
+
+
+def _record_fields(args: list[Token]) -> list[str]:
+    """Fields of ``record 'a r = parent + f :: T g :: U``: words before ``::``
+    at bracket depth 0, after the ``=``."""
+    eq = next((i for i, t in enumerate(args) if t.text == "="), None)
+    if eq is None:
+        return []
+    fields: list[str] = []
+    depth = 0
+    body = args[eq + 1 :]
+    for i, tok in enumerate(body):
+        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
+        following = body[i + 1].text if i + 1 < len(body) else ""
+        if depth == 0 and tok.kind is Kind.WORD and following == "::":
+            fields.append(tok.text)
+    return fields
+
+
+def _rule_names(args: list[Token]) -> list[str]:
+    """Names of the rules of an inductive definition: `base: "..." | step: "..."`."""
+    stop = next((i for i, t in enumerate(args) if t.text == "where"), None)
+    if stop is None:
+        return []
+    names: list[str] = []
+    part: list[Token] = []
+    for tok in [*args[stop + 1 :], None]:
+        if tok is None or tok.text == "|":
+            if len(part) >= 2 and part[0].kind is Kind.WORD and part[1].text in (":", "["):
+                names.append(part[0].text)
+            part = []
+        else:
+            part.append(tok)
+    return names
+
+
+def _derived(command: str, bound: str, args: list[Token]) -> list[str]:
+    names = [bound + suffix for suffix in DERIVED.get(command, ())]
+    if command in _INDUCTIVE:
+        names += [f"{bound}.{rule}" for rule in _rule_names(args)]
+    if command in ("locale", "class") and any(t.text == "assumes" for t in args):
+        names += [f"{bound}_def", f"{bound}.intro"]
+        # A locale that extends others gets its own assumptions as `_axioms`.
+        if any(t.text == "=" for t in args[:2]) and any(t.text == "+" for t in args):
+            names += [f"{bound}_axioms_def", f"{bound}_axioms.intro"]
+    return names
+
+
+@dataclass(frozen=True)
+class Interpretation:
+    """``interpretation q: loc ...``: loc's facts, qualified by ``q``."""
+
+    qualifier: str
+    locale: str
+    command: str
+    theory: str
+    path: Path
+    line: int
+
+
+def interpretations(theory: Theory, name: str, path: Path) -> Iterator[Interpretation]:
+    """Qualified theory-level interpretations of ``theory``. Unqualified ones
+    and those inside a locale (which extend it) are not followed."""
+    depth = 0
+    for command in theory.commands:
+        args = list(significant(command.tokens(theory.tokens)))[1:]
+        if command.kind is CommandKind.THY_END and command.name == "end":
+            depth = max(0, depth - 1)
+        elif command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
+            depth += 1
+        elif command.name in _INTERPRETATIONS and depth == 0:
+            if len(args) >= 3 and args[0].kind is Kind.WORD and args[1].text in (":", "?:"):
+                locale = args[2]
+            elif len(args) >= 4 and args[1].text == "?" and args[2].text == ":":
+                locale = args[3]
+            else:
+                continue
+            yield Interpretation(
+                args[0].text,
+                unquote(locale),
+                command.name,
+                name,
+                path,
+                theory.lines.line(theory.start(command)),
+            )
+
+
+def interpreted(facts: list[Entity], interpretation: Interpretation) -> Iterator[Entity]:
+    """The facts ``interpretation`` makes: every fact declared in its locale
+    (not the ones the locale inherits), qualified by its qualifier."""
+    locale = interpretation.locale.rpartition(".")[2]
+    for fact in facts:
+        if fact.kind == "fact" and fact.scope == locale:
+            yield Entity(
+                name=f"{interpretation.qualifier}.{fact.name}",
+                kind="fact",
+                command=interpretation.command,
+                theory=interpretation.theory,
+                scope="",
+                path=interpretation.path,
+                line=interpretation.line,
+                end_line=interpretation.line,
+                start=0,
+                end=0,
+                doc="",
+                derived_from=fact.qualified,
+            )
+
+
+def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> Iterator[Entity]:
+    """Every named declaration of ``theory`` (named ``name``, read from
+    ``path``); with ``derived``, also the facts the declarations derive
+    (``f_def``, ``f.simps``, the rules of an inductive, ...)."""
     stops = {b.statement: b.stop for b in theory.goal_blocks()}
     scopes: list[str] = []  # "" for an anonymous block
     commands = theory.commands
@@ -207,7 +336,7 @@ def entities(theory: Theory, name: str, path: Path) -> Iterator[Entity]:
             start = theory.text.rfind("\n", 0, start) + 1
             end = theory.end(last)
             for bound in _names(command.name, args[j:]):
-                yield Entity(
+                entity = Entity(
                     name=bound,
                     kind=KINDS[command.name],
                     command=command.name,
@@ -220,6 +349,49 @@ def entities(theory: Theory, name: str, path: Path) -> Iterator[Entity]:
                     end=end,
                     doc=_doc(theory, commands[i - 1] if i else None),
                 )
+                yield entity
+                # Parameters (`fixes`) are constants of the locale, and named
+                # assumptions its facts; a class's are named in its `_class`
+                # locale: `c_class.op`.
+                if command.name in ("locale", "class"):
+                    declaration = parse_declaration(theory, command, path)
+                    local = bound if command.name == "locale" else f"{bound}_class"
+                    for parameter in declaration.fixes if declaration else []:
+                        yield replace(
+                            entity,
+                            name=parameter.name,
+                            kind="constant",
+                            command="fixes",
+                            scope=local,
+                            doc="",
+                        )
+                    # Named assumptions are facts of the locale.
+                    for assumption in declaration.assumes if declaration else []:
+                        if assumption.name:
+                            yield replace(
+                                entity,
+                                name=assumption.name,
+                                kind="fact",
+                                command="assumes",
+                                scope=local,
+                                doc="",
+                            )
+                # Record fields are constants named in the record: `r.field`.
+                if command.name == "record":
+                    for field_name in _record_fields(args[j:]):
+                        yield replace(
+                            entity,
+                            name=field_name,
+                            kind="constant",
+                            command="record",
+                            scope=bound,
+                            doc="",
+                        )
+                if derived:
+                    for fact in _derived(command.name, bound, args[j:]):
+                        yield replace(
+                            entity, name=fact, kind="fact", doc="", derived_from=entity.qualified
+                        )
         if command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
             # `context fixes ... begin` is anonymous; `context loc begin` is not.
             named = command.name in _SCOPES and (command.name != "context" or len(args) == 2)

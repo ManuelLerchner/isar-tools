@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `isar project names` lists locale and class parameters (`L.x`, `c_class.x`), named
+  locale assumptions (`L.a`), and record fields (`r.field`). `--derived` adds derived
+  facts (`f_def`, `f.simps`, `P.intros` and named rules, `t.inject`, `L_def`, `L.intro`,
+  ...) and the facts of qualified interpretations (`q.fact`), with a `derived_from`
+  column. On Voblint, 112 of its 113 site anchors into rendered theories now name a
+  listed fact or constant; the last is in a session outside the project.
 - `isar check`: `theory-name` (the header names a theory other than the file, or a
   qualified one) and `invalid-utf8` in the default `syntax` group; opt-in groups
   `hygiene` (`tab`, `carriage-return`, `bidi-control`, `reserved-file-name`, after

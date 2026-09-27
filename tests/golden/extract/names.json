@@ -31,6 +31,16 @@
       "doc": ""
     },
     {
+      "name": "B.l.x",
+      "kind": "constant",
+      "command": "fixes",
+      "session": "S",
+      "path": "B.thy",
+      "line": 2,
+      "end_line": 2,
+      "doc": ""
+    },
+    {
       "name": "B.l.succ_pos",
       "kind": "fact",
       "command": "lemma",

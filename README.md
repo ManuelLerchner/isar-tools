@@ -137,6 +137,7 @@ isar project hierarchy --root numeric_domain -d ~/afp/thys --format json
 isar project names --kind locale                  # every locale, as Theory.locale
 isar project names --format markdown > NAMES.md   # an index with docstrings
 isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
+isar project names --derived                      # also f_def, f.simps, L.intro, q.fact
 ```
 
 Names are qualified as Isabelle renders them: a lemma inside `context loc` is
@@ -211,8 +212,11 @@ file is named on the command line (as a git hook does).
   from one AFP revision (`scripts/gen_afp_commands.py`). A command of a session
   that is in neither and not passed with `-d` is read as part of the previous
   command.
-- `project extract` finds names that commands declare; derived names
-  (`foo_def`, `foo.simps`) and names made by interpretations are not found.
+- `project names --derived` adds the usual derived facts (`f_def`, `f.simps`,
+  `P.intros`, `t.inject`, `L.intro`, ...) and the facts of qualified
+  theory-level interpretations (`q.fact`), from the interpreted locale's own
+  facts only; facts a locale inherits, and names made by other packages, are
+  not listed.
 - `project hierarchy` follows declared parents, not `sublocale`, `subclass`, or
   `interpretation`.
 - `stats build` reads one log line format, observed in Isabelle2025 logs.

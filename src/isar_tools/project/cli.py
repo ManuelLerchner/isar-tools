@@ -10,7 +10,16 @@ from typing import TextIO, cast
 
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
-from isar_tools.project.names import KINDS, Entity, entities, matches, source
+from isar_tools.project.names import (
+    KINDS,
+    Entity,
+    Interpretation,
+    entities,
+    interpretations,
+    interpreted,
+    matches,
+    source,
+)
 from isar_tools.project.workspace import InputError, add_include_option
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
@@ -83,6 +92,12 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         default=[],
         metavar="NAME",
         help="only NAME, a base name or an exact qualified name (repeatable)",
+    )
+    names.add_argument(
+        "--derived",
+        action="store_true",
+        help="also list derived facts (f_def, f.simps, the rules of an inductive, L.intro, "
+        "...) and the facts of qualified interpretations (q.fact)",
     )
     names.add_argument("--format", choices=sorted(RENDERERS), default="text")
     add_include_option(names)
@@ -347,12 +362,20 @@ def run_hierarchy(args: argparse.Namespace) -> int:
 _Found = tuple[Entity, str]  # an entity and its source text
 
 
-def _entities(project: Project) -> list[_Found]:
+def _entities(project: Project, derived: bool = False) -> list[_Found]:
+    """Declarations of the project's theories, with their source. With
+    ``derived``, also derived facts and those of qualified interpretations."""
     found: list[_Found] = []
+    interps: list[Interpretation] = []
     for session in project.own_sessions:
         for name, path in project.owned_theories(session).items():
             theory = parse_theory(read_source(path), project.keywords_for(path))
-            found += [(e, source(theory, e)) for e in entities(theory, name, path)]
+            found += [(e, source(theory, e)) for e in entities(theory, name, path, derived)]
+            if derived:
+                interps += interpretations(theory, name, path)
+    facts = [e for e, _ in found]
+    for interp in interps:
+        found += [(e, "") for e in interpreted(facts, interp)]
     return found
 
 
@@ -460,7 +483,7 @@ def _qualified_hit(entity: Entity, name: str) -> bool:
     return name in (entity.name, entity.qualified)
 
 
-def names_table(project: Project, found: list[Entity], docs: bool) -> Table:
+def names_table(project: Project, found: list[Entity], docs: bool, derived: bool = False) -> Table:
     rows: list[dict[str, Cell]] = []
     for e in found:
         session = project.session_of(e.path)
@@ -474,6 +497,7 @@ def names_table(project: Project, found: list[Entity], docs: bool) -> Table:
                 "line": e.line,
                 "end_line": e.end_line,
                 "doc": e.doc,
+                "derived_from": e.derived_from,
             }
         )
     return Table(
@@ -487,6 +511,7 @@ def names_table(project: Project, found: list[Entity], docs: bool) -> Table:
             Column("path", "path"),
             Column("line", "line", True),
             Column("end_line", "end", True),
+            *([Column("derived_from", "from")] if derived else []),
             *([Column("doc", "doc")] if docs else []),
         ],
         rows,
@@ -525,7 +550,7 @@ def write_index(project: Project, found: list[Entity], out: TextIO) -> None:
 
 def run_names(args: argparse.Namespace) -> int:
     project = _load(args)
-    found = [e for e, _ in _entities(project)]
+    found = [e for e, _ in _entities(project, args.derived)]
     if args.kind:
         found = [e for e in found if e.kind in args.kind]
     missing = 0
@@ -543,6 +568,6 @@ def run_names(args: argparse.Namespace) -> int:
         write_index(project, found, sys.stdout)
     else:
         # Docstrings span lines, which a text table cannot show.
-        table = names_table(project, found, docs=args.format != "text")
+        table = names_table(project, found, docs=args.format != "text", derived=args.derived)
         RENDERERS[args.format]([table], sys.stdout)
     return 1 if missing else 0

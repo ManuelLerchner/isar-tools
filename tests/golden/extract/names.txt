@@ -4,4 +4,5 @@ name          kind      command     session  path   line  end
 A.succ        constant  definition  S        A.thy     2    3
 A.succ_pos    fact      lemma       S        A.thy     5    6
 B.l           locale    locale      S        B.thy     2    2
+B.l.x         constant  fixes       S        B.thy     2    2
 B.l.succ_pos  fact      lemma       S        B.thy     3    4

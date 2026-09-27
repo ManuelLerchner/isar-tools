@@ -167,3 +167,29 @@ def test_names_by_name(project: Path, capsys: pytest.CaptureFixture[str]) -> Non
         "isar project names: B.succ_pos: no declaration; did you mean A.succ_pos, B.l.succ_pos?",
         "isar project names: gone: no declaration",
     ]
+
+
+def test_names_derived(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*NAMES, "--derived", "--format", "json"]) == 0
+    rows = {r["name"]: r["derived_from"] for r in json.loads(capsys.readouterr().out)["names"]}
+    assert rows["A.succ_def"] == "A.succ"
+    assert rows["A.succ"] == ""
+    assert main([*NAMES, "--derived", "--name", "A.succ_def"]) == 0
+    assert "from" in capsys.readouterr().out.splitlines()[1]  # the derived_from column
+    assert main([*NAMES, "--name", "A.succ_def"]) == 1  # not listed without --derived
+
+
+def test_names_derived_interpretation(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories L I",
+            "L.thy": 'theory L imports Main begin\nlocale l = assumes a: "True"\nend\n',
+            "I.thy": "theory I imports L begin\ninterpretation q: l by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "--derived", "--name", "I.q.a", "--format", "json"]) == 0
+    (row,) = json.loads(capsys.readouterr().out)["names"]
+    assert (row["command"], row["derived_from"], row["line"]) == ("interpretation", "L.l.a", 2)
