@@ -14,4 +14,5 @@
 | Name | Kind | Line | Description |
 | --- | --- | ---: | --- |
 | `l` | locale | 2 |  |
+| `l.x` | fixes | 2 |  |
 | `l.succ_pos` | lemma | 3 |  |
