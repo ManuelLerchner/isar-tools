@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Install from conda-forge: `pixi global install isar-tools` or
+  `conda install -c conda-forge isar-tools`.
 - `isar project names` lists locale and class parameters (`L.x`, `c_class.x`), named
   locale assumptions (`L.a`), and record fields (`r.field`). `--derived` adds derived
   facts (`f_def`, `f.simps`, `P.intros` and named rules, `t.inject`, `L_def`, `L.intro`,

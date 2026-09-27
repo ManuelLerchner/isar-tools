@@ -2,12 +2,15 @@
 
 [![CI Status][ci-badge]][ci]
 [![PyPI][pypi-badge]][pypi]
+[![conda-forge][conda-badge]][conda]
 [![License][license-badge]][license]
 
 [ci-badge]: https://img.shields.io/github/actions/workflow/status/ManuelLerchner/isar-tools/ci.yml?branch=main&style=flat-square&label=CI
 [ci]: https://github.com/ManuelLerchner/isar-tools/actions/workflows/ci.yml
 [pypi-badge]: https://img.shields.io/pypi/v/isar-tools?style=flat-square
 [pypi]: https://pypi.org/project/isar-tools/
+[conda-badge]: https://img.shields.io/conda/vn/conda-forge/isar-tools?style=flat-square
+[conda]: https://anaconda.org/conda-forge/isar-tools
 [license-badge]: https://img.shields.io/github/license/ManuelLerchner/isar-tools?style=flat-square
 [license]: https://github.com/ManuelLerchner/isar-tools/blob/main/LICENSE
 
@@ -26,12 +29,13 @@ Status: pre-alpha. See [`CHANGELOG.md`](https://github.com/ManuelLerchner/isar-t
 ## Install
 
 ```sh
+pixi global install isar-tools  # or: conda install -c conda-forge isar-tools
 pip install isar-tools          # or: uv tool install isar-tools, pipx install isar-tools
 isar --help
 ```
 
-Python 3.11 or newer; no runtime dependencies. A conda-forge package
-(`pixi global install isar-tools`) follows the first PyPI release.
+Python 3.11 or newer; no runtime dependencies. In a pixi project:
+`pixi add isar-tools`.
 
 ## Commands
 
