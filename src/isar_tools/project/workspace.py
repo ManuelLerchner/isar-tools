@@ -92,9 +92,9 @@ def load(paths: Iterable[Path], include: Sequence[Path] = ()) -> Workspace:
             resolved = path.resolve()
             found.setdefault(resolved, SourceFile(resolved, project_of(project_root(resolved))))
         elif path.exists():
-            raise InputError(f"{path}: not a directory or .thy file")
+            raise InputError(f"{path.as_posix()}: not a directory or .thy file")
         else:
-            raise InputError(f"{path}: no such file or directory")
+            raise InputError(f"{path.as_posix()}: no such file or directory")
     return Workspace(list(found.values()), named)
 
 

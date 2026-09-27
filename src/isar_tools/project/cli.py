@@ -42,7 +42,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
 def _load(args: argparse.Namespace) -> Project:
     path: Path = args.path
     if not path.is_dir():
-        raise InputError(f"{path}: not a directory")
+        raise InputError(f"{path.as_posix()}: not a directory")
     return Project.load(path, args.include)
 
 
