@@ -4,7 +4,7 @@ from importlib.metadata import version
 
 import pytest
 
-from isar_tools.cli import EXIT_USAGE, PLACEHOLDERS, main
+from isar_tools.cli import EXIT_USAGE, main
 
 
 def test_no_command_prints_help_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
@@ -12,16 +12,6 @@ def test_no_command_prints_help_to_stderr(capsys: pytest.CaptureFixture[str]) ->
     out, err = capsys.readouterr()
     assert out == ""
     assert "usage: isar" in err
-
-
-@pytest.mark.parametrize("command", sorted(PLACEHOLDERS))
-def test_placeholder_commands_fail_with_usage_status(
-    command: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main([command]) == EXIT_USAGE
-    out, err = capsys.readouterr()
-    assert out == ""
-    assert f"isar {command}: not implemented yet" in err
 
 
 def test_unknown_command_exits_with_usage_status() -> None:
