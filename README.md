@@ -1,5 +1,13 @@
 # isar-tools
 
+[![CI Status][ci-badge]][ci]
+[![License][license-badge]][license]
+
+[ci-badge]: https://img.shields.io/github/actions/workflow/status/ManuelLerchner/isar-tools/ci.yml?branch=main&style=flat-square&label=CI
+[ci]: https://github.com/ManuelLerchner/isar-tools/actions/workflows/ci.yml
+[license-badge]: https://img.shields.io/github/license/ManuelLerchner/isar-tools?style=flat-square
+[license]: https://github.com/ManuelLerchner/isar-tools/blob/main/LICENSE
+
 Source tooling for Isabelle/Isar projects: a formatter, project and source
 checks, and statistics. Pure Python. Works on `.thy` and `ROOT` files without
 running Isabelle.
