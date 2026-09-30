@@ -1,0 +1,4 @@
+  1  Core      rests on -
+  2  Again     rests on Core
+  2  App-Main  rests on Core
+  2  Bare      rests on Core

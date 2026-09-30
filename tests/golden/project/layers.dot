@@ -1,0 +1,8 @@
+digraph isabelle {
+  rankdir=BT;
+  { rank=same; "Core"; }
+  { rank=same; "Again"; "App-Main"; "Bare"; }
+  "App-Main" -> "Core";
+  "Again" -> "Core";
+  "Bare" -> "Core" [style=dotted];
+}

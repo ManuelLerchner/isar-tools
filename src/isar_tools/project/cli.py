@@ -55,11 +55,17 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "graph",
         help="the session graph, or with --theories the theory import graph",
         description="The session graph (parent and `sessions` edges), or with --theories "
-        "the import graph of the project's theories.",
+        "the import graph of the project's theories. With --layers, sessions in strata: "
+        "a session rests on its parent, its `sessions` entries, and the sessions its "
+        "theories import, and its layer is one above the highest of those (1 if none is "
+        "known). Sessions of -d directories the project rests on are included.",
     )
     graph.add_argument("path", nargs="?", type=Path, default=Path(), help="project directory")
     graph.add_argument("--format", choices=("text", "json", "dot"), default="text")
     graph.add_argument("--theories", action="store_true", help="theory import graph")
+    graph.add_argument(
+        "--layers", action="store_true", help="session layers, with session import edges"
+    )
     add_include_option(graph)
     graph.set_defaults(func=run_graph)
     hierarchy = views.add_parser(
@@ -279,12 +285,90 @@ def theory_edges(project: Project) -> list[tuple[str, str, str]]:
     return edges
 
 
+def session_imports(project: Project) -> list[tuple[str, str, str]]:
+    """(importer, imported, "imports") between known sessions, own or -d, whose
+    theories import one another."""
+    edges: dict[tuple[str, str], None] = {}
+    for session in project.sessions.values():
+        for path in project.owned_theories(session).values():
+            header = project.header(path)
+            for imp in header.imports if header is not None else ():
+                target = project.resolve_import(path, session, imp.text)
+                owner = project.session_of(target) if target is not None else None
+                if owner is not None and owner is not session:
+                    edges.setdefault((session.name, owner.name))
+    return [(a, b, "imports") for a, b in edges]
+
+
+def layers(project: Project) -> dict[str, int]:
+    """The layer of each own session and of every known session they rest on:
+    one above the highest layer among the known sessions it rests on."""
+    rests: dict[str, set[str]] = {name: set() for name in project.sessions}
+    for session in project.sessions.values():
+        below = [session.parent or "", *(n.text for n in session.spec.sessions)]
+        rests[session.name] |= {n for n in below if n in project.sessions}
+    for a, b, _ in session_imports(project):
+        rests[a].add(b)
+    layer: dict[str, int] = {}
+
+    def visit(name: str, active: frozenset[str]) -> int:
+        if name not in layer:
+            # `active` only guards against a (malformed) cycle.
+            below = [visit(n, active | {name}) for n in rests[name] if n not in active]
+            layer[name] = 1 + max(below, default=0)
+        return layer[name]
+
+    for session in project.own_sessions:
+        visit(session.name, frozenset())
+    return dict(sorted(layer.items(), key=lambda item: (item[1], item[0])))
+
+
 def _dot_id(name: str) -> str:
     return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def run_layers(project: Project, fmt: str) -> None:
+    layer = layers(project)
+    edges = [e for e in session_edges(project) if e[0] in layer and e[1] in layer]
+    edges += [e for e in session_imports(project) if e[0] in layer]
+    if fmt == "json":
+        json.dump(
+            {
+                "nodes": list(layer),
+                "edges": [{"from": a, "to": b, "kind": k} for a, b, k in edges],
+                "layers": layer,
+            },
+            sys.stdout,
+            indent=2,
+        )
+        sys.stdout.write("\n")
+    elif fmt == "dot":
+        print("digraph isabelle {")
+        print("  rankdir=BT;")
+        for n in sorted(set(layer.values())):
+            members = " ".join(f"{_dot_id(s)};" for s, k in layer.items() if k == n)
+            print(f"  {{ rank=same; {members} }}")
+        for a, b, kind in edges:
+            style = {"sessions": " [style=dashed]", "imports": " [style=dotted]"}.get(kind, "")
+            print(f"  {_dot_id(a)} -> {_dot_id(b)}{style};")
+        print("}")
+    else:
+        rests: dict[str, set[str]] = {}
+        for a, b, _ in edges:
+            rests.setdefault(a, set()).add(b)
+        width = max((len(s) for s in layer), default=0)
+        for name, n in layer.items():
+            below = ", ".join(sorted(rests.get(name, set()))) or "-"
+            print(f"{n:>3}  {name:<{width}}  rests on {below}")
+
+
 def run_graph(args: argparse.Namespace) -> int:
     project = _load(args)
+    if args.layers:
+        if args.theories:
+            raise InputError("--layers is a view of sessions, not of --theories")
+        run_layers(project, args.format)
+        return 0
     if args.theories:
         nodes = [f"{s.name}.{n}" for s in project.own_sessions for n in project.owned_theories(s)]
         edges = theory_edges(project)
