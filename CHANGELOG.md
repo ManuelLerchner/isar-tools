@@ -38,6 +38,13 @@
   document text that names nothing the project declares or uses (Isabelle checks
   antiquotations, not these), and `prose-underscore`, a raw `_` in document prose,
   which LaTeX rejects.
+- `isar project names` JSON and CSV: `anchor`, the id Isabelle's HTML presentation
+  gives the definition (`Theory.loc.name|fact`), and `url`, its page and anchor below
+  browser_info (`Chapter/Session/Theory.html#...`).
+- `isar check links FILE...`: links from HTML and Markdown into Isabelle's HTML
+  theories. With `--browser-info DIR` (and `--link-base URL`), the page and anchor must
+  exist (`broken-link`, `broken-anchor`); without a build, an anchor must spell the name
+  with the scope the theory declares it in (`anchor-name`).
 
 ## 0.2.0 (2026-09-27)
 

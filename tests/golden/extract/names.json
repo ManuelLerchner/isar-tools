@@ -11,7 +11,9 @@
       "doc": "",
       "mixfix": "",
       "notation": "",
-      "mode": ""
+      "mode": "",
+      "anchor": "A.succ|const",
+      "url": "Unsorted/S/A.html#A.succ%7Cconst"
     },
     {
       "name": "A.succ_pos",
@@ -24,7 +26,9 @@
       "doc": "",
       "mixfix": "",
       "notation": "",
-      "mode": ""
+      "mode": "",
+      "anchor": "A.succ_pos|fact",
+      "url": "Unsorted/S/A.html#A.succ_pos%7Cfact"
     },
     {
       "name": "B.l",
@@ -37,7 +41,9 @@
       "doc": "",
       "mixfix": "",
       "notation": "",
-      "mode": ""
+      "mode": "",
+      "anchor": "B.l|locale",
+      "url": "Unsorted/S/B.html#B.l%7Clocale"
     },
     {
       "name": "B.l.x",
@@ -50,7 +56,9 @@
       "doc": "",
       "mixfix": "",
       "notation": "",
-      "mode": ""
+      "mode": "",
+      "anchor": "",
+      "url": ""
     },
     {
       "name": "B.l.succ_pos",
@@ -63,7 +71,9 @@
       "doc": "",
       "mixfix": "",
       "notation": "",
-      "mode": ""
+      "mode": "",
+      "anchor": "B.l.succ_pos|fact",
+      "url": "Unsorted/S/B.html#B.l.succ_pos%7Cfact"
     }
   ]
 }

@@ -354,3 +354,13 @@ def test_names_statements_of_interpretation_facts(
     monkeypatch.chdir(base)
     assert main([*NAMES, "--derived", "--statements", "--name", "I.q.a", "--format", "csv"]) == 0
     assert capsys.readouterr().out.splitlines()[1].endswith(",")  # no statement
+
+
+def test_names_anchors(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*NAMES, "--format", "json"]) == 0
+    rows = {
+        r["name"]: (r["anchor"], r["url"]) for r in json.loads(capsys.readouterr().out)["names"]
+    }
+    assert rows["A.succ"] == ("A.succ|const", "Unsorted/S/A.html#A.succ%7Cconst")
+    assert rows["B.l.succ_pos"] == ("B.l.succ_pos|fact", "Unsorted/S/B.html#B.l.succ_pos%7Cfact")
+    assert rows["B.l.x"] == ("", "")  # a locale parameter has no anchor
