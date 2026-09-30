@@ -51,6 +51,30 @@ def _directories(session: Session) -> list[Finding]:
     return findings
 
 
+def _theory_paths(session: Session) -> list[Finding]:
+    """A quoted ``theories`` entry with a ``/``: Isabelle reads it as a
+    malformed theory name, and the session does not load. (Unquoted, it is
+    several tokens, a ``root-syntax`` finding.)"""
+    findings: list[Finding] = []
+    root = session.root
+    for entry in session.spec.theories:
+        name = entry.name
+        if "/" not in name.text or root.text[name.start] not in ('"', "\\", "‹"):
+            continue
+        directory, _, base = name.text.rpartition("/")
+        findings.append(
+            _at(
+                root,
+                name,
+                "theory-path",
+                f"theories entry {name.text} is a path, which Isabelle does not load; "
+                f'put the directory on the search path (directories "{directory}") and '
+                f"list {base}",
+            )
+        )
+    return findings
+
+
 def _duplicate_names(project: Project, session: Session) -> list[Finding]:
     """Two files with one stem on one search path: Isabelle builds one and
     silently ignores the other."""
@@ -83,6 +107,7 @@ def check_project(project: Project) -> list[Finding]:
     findings = [Finding(p.path, p.line, p.column, p.code, p.message) for p in project.problems]
     for session in project.own_sessions:
         findings += _directories(session)
+        findings += _theory_paths(session)
         findings += _duplicate_names(project, session)
     for session, path in project.unreached():
         findings.append(

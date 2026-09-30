@@ -98,16 +98,16 @@ isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
 
-| Group       | Codes                                                                                                                                           |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`   | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
-| `proofs`    | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                              |
-| `syntax`    | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                             |
-| `symbols`   | `non-ascii` (opt-in)                                                                                                                            |
-| `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                             |
-| `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                      |
-| `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                         |
-| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                          |
+| Group       | Codes                                                                                                                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`   | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
+| `proofs`    | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                                             |
+| `syntax`    | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            |
+| `symbols`   | `non-ascii` (opt-in)                                                                                                                                           |
+| `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
+| `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
+| `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
+| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.

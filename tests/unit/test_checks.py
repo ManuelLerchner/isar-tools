@@ -58,6 +58,29 @@ session Nowhere in "nowhere" = HOL + theories X
     )
 
 
+def test_theory_path(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": 'session S = HOL +\n  theories "gen/Foo" \\<open>gen/Bar\\<close> gen/Baz Ok\n',
+            "gen/Foo.thy": "theory Foo imports Main begin end",
+            "gen/Bar.thy": "theory Bar imports Main begin end",
+            "gen/Baz.thy": "theory Baz imports Main begin end",
+            "Ok.thy": "theory Ok imports Main begin end",
+        }
+    )
+    findings = check_project(Project.load(base))
+    # Unquoted, the path is a root-syntax finding instead.
+    assert [(f.line, f.column, f.code) for f in findings] == [
+        (2, 45, "root-syntax"),
+        (2, 12, "theory-path"),
+        (2, 22, "theory-path"),
+    ]
+    assert findings[1].message == (
+        "theories entry gen/Foo is a path, which Isabelle does not load; put the directory "
+        'on the search path (directories "gen") and list Foo'
+    )
+
+
 def test_included_sessions_are_not_checked(make_project: MakeProject) -> None:
     base = make_project(
         {

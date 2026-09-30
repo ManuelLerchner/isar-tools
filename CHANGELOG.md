@@ -27,6 +27,9 @@
   parameters. The parameters of a locale's `for` clause are listed as constants of the
   locale (command `for`), and `hierarchy --format json` has them as `for_fixes`. A
   mixfix keeps its spacing as written (`[51, 51] 50`, was `[ 51 , 51 ] 50`).
+- `isar check`: `theory-path` in the `project` group, a quoted `theories` entry with a
+  `/` (`theories "generated/Foo"`), which Isabelle does not load. The fix is
+  `directories "generated"` and `theories Foo`.
 
 ## 0.2.0 (2026-09-27)
 
