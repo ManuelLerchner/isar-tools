@@ -23,7 +23,8 @@ demo project, isar check reports an unfinished proof (sorry), isar fmt --diff
 indents a proof and removes trailing whitespace and extra blank lines, and isar
 project graph prints the theory import graph.](https://raw.githubusercontent.com/ManuelLerchner/isar-tools/main/docs/demo/demo.gif)
 
-Status: pre-alpha. See [`CHANGELOG.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/CHANGELOG.md) and
+Status: alpha. Published on PyPI and conda-forge and used by a real project;
+minor versions may still add commands and JSON columns. See [`CHANGELOG.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/CHANGELOG.md) and
 [`docs/PLAN.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/PLAN.md).
 
 ## Install

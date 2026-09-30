@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-09-30)
 
 - `isar project names` lists the constructors, discriminators, and selectors of a
   datatype or codatatype as constants named in the type (`t.C`, `t.sel`), and the

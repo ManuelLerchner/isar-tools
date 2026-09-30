@@ -264,12 +264,13 @@ the 3.11 floor.
 | M4        | done  | Plus `--max-line-length` wrapping and raise-only default indentation. Voblint formatted with `--max-line-length 100` builds with Isabelle (local round trip).                                           |
 | M5        | done  | Reads one evidence-backed log line format; needs a run on a real log.                                                                                                                                   |
 | M6        | done  | AFP and Voblint corpus runs pass (tokens, idempotence, goal blocks); formatted Voblint builds. The AFP is not build-tested after formatting.                                                            |
-| M7        | done  | 0.1.0 on PyPI; conda-forge recipe submitted to staged-recipes.                                                                                                                                          |
+| M7        | done  | 0.1.0 on PyPI; on conda-forge since 0.2.0.                                                                                                                                                              |
 
 Beyond the plan: `isar project hierarchy` (class and locale declarations as
 data, for figures such as Voblint's domain tree) and `isar project extract`
 (declaration source by name, with a manifest drift check replacing Voblint's
-`snippets.py`).
+`snippets.py`). Since 0.3.0 also `isar project instances`, `graph --layers`, and
+the check groups `retired`, `prose`, and `links`, ported from Voblint's scripts.
 
 ## 13. Design principles
 
