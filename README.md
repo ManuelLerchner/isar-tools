@@ -95,6 +95,7 @@ isar check symbols src/           # non-ASCII characters outside comments
 isar check docs src/              # theories, headings, locales, classes without a text block
 isar check leftovers hygiene src/ # sledgehammer, thm, nitpick without expect; tabs, CRs
 isar check retired --retired-file retired.txt src/   # removed names that came back
+isar check prose src/             # names cited in text blocks; raw _ that LaTeX rejects
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
@@ -110,6 +111,7 @@ isar check --ignore oops --format json
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
+| `prose`     | `prose-reference`, `prose-underscore` (opt-in)                                                                                                                 |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
@@ -131,6 +133,15 @@ an assumption or a theorem statement as a free variable, so a locale whose
 assumption cites a deleted constant still builds and silently assumes less.
 Matching is whole-word outside `(* *)` comments, and `foo_def`, `foo_def_raw`,
 `foo_axioms`, and `foo_axioms_def` count as `foo`.
+
+`prose` reads document text (`text`, `section`, ...). Isabelle checks
+`\<^const>\<open>f\<close>`, but not a plain nested cartouche such as
+`\<open>f_def\<close>`, which is how prose usually cites a lemma. A
+`prose-reference` is such a cartouche naming nothing the project or its `-d`
+directories declare (derived facts included) or use in their formal text;
+only names of at least four characters with an underscore are read, and
+`--allow NAME` accepts one. A `prose-underscore` is a raw `_` in the outer
+prose, which reaches LaTeX unescaped and fails the document build.
 
 ### Commands of other sessions
 

@@ -34,6 +34,10 @@
   `check.retired-file`, `--retired`, `--retired-file`) that appear again outside
   `(* *)` comments, also as `foo_def` or `foo_axioms`. A deleted constant cited in an
   assumption is otherwise a free variable, and the build does not notice.
+- `isar check prose`: `prose-reference`, a plain `\<open>name\<close>` cartouche in
+  document text that names nothing the project declares or uses (Isabelle checks
+  antiquotations, not these), and `prose-underscore`, a raw `_` in document prose,
+  which LaTeX rejects.
 
 ## 0.2.0 (2026-09-27)
 

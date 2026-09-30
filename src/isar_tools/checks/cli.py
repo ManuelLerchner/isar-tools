@@ -9,6 +9,7 @@ from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
+from isar_tools.checks.prose import check_prose
 from isar_tools.checks.retired import check_retired, read_retired
 from isar_tools.checks.sources import (
     check_hygiene,
@@ -20,6 +21,7 @@ from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
 from isar_tools.config import add_exclude_option
 from isar_tools.project.workspace import InputError, SourceFile, add_include_option, load
 from isar_tools.render import RENDERERS, Column, Table, display_path
+from isar_tools.source.theory import Theory
 from isar_tools.style import Style, add_color_option
 
 FORMATS = ("text", "json", "csv")
@@ -61,7 +63,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         action="append",
         default=[],
         metavar="NAME",
-        help="locales: do not report this identifier (repeatable)",
+        help="locales, prose: do not report this identifier (repeatable)",
     )
     check.add_argument(
         "--retired",
@@ -133,9 +135,10 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
             findings += check_hygiene(source.path, text)
         if retired is not None:
             findings += check_retired(source.path, text, retired)
-    if groups & {"proofs", "syntax", "symbols", "docs", "leftovers"}:
+    parsed: dict[Path, Theory] = {}
+    if groups & {"proofs", "syntax", "symbols", "docs", "leftovers", "prose"}:
         for source in readable:
-            theory = source.parse()
+            theory = parsed[source.path] = source.parse()
             if "proofs" in groups:
                 findings += check_proofs(source.path, theory)
             if "syntax" in groups:
@@ -151,6 +154,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
                 findings += check_docs(source.path, theory)
     if "locales" in groups:
         findings += check_locales(readable, allow=args.allow)
+    if "prose" in groups:
+        findings += check_prose(readable, parsed, allow=args.allow)
     ignored = set(args.ignore)
     return sorted({f for f in findings if f.code not in ignored})
 
@@ -190,6 +195,7 @@ _GROUP_COLORS = {
     "hygiene": "magenta",
     "leftovers": "yellow",
     "retired": "red",
+    "prose": "green",
 }
 
 
