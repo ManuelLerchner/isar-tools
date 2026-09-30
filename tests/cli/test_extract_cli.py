@@ -307,3 +307,25 @@ def test_names_of_files(
     capsys.readouterr()
     assert main([*NAMES, "alone/notes.txt"]) == 2
     assert "notes.txt: not a directory or .thy file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("fmt", ["text", "json"])
+def test_instances_view(
+    make_project: MakeProject,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    golden: Golden,
+    fmt: str,
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": "theory T imports Main begin\n"
+            "instantiation sign :: numeric_domain begin\ninstance by simp\nend\n"
+            "global_interpretation sign_tf: mono_ops sign_ops\n  by simp\n"
+            "interpretation loc 2 by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["project", "instances", "--format", fmt]) == 0
+    golden(f"extract/instances.{'txt' if fmt == 'text' else fmt}", capsys.readouterr().out)

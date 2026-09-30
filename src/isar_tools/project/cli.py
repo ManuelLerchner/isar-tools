@@ -74,6 +74,20 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     hierarchy.add_argument("--format", choices=("text", "json", "dot"), default="text")
     add_include_option(hierarchy)
     hierarchy.set_defaults(func=run_hierarchy)
+    instances_view = views.add_parser(
+        "instances",
+        help="class instances and locale interpretations",
+        description="Class instances (`instantiation`, `instance t :: c`) and locale "
+        "interpretations (`interpretation`, `global_interpretation`) of the project: "
+        "the name (`type :: class`, or the qualifier; empty if none), the class or "
+        "locale, and the text of the locale expression after the locale's name.",
+    )
+    instances_view.add_argument(
+        "path", nargs="?", type=Path, default=Path(), help="project directory"
+    )
+    instances_view.add_argument("--format", choices=sorted(RENDERERS), default="text")
+    add_include_option(instances_view)
+    instances_view.set_defaults(func=run_instances)
     names = views.add_parser(
         "names",
         help="named declarations with kind, location, and docstring",
@@ -377,6 +391,47 @@ def run_hierarchy(args: argparse.Namespace) -> int:
             for a in decl.assumes:
                 label = f"{a.name}: " if a.name else ""
                 print(f"  assumes {label}{' '.join(a.props)}")
+    return 0
+
+
+def instances_table(project: Project) -> Table:
+    rows: list[dict[str, Cell]] = []
+    for session in project.own_sessions:
+        for name, path in project.owned_theories(session).items():
+            theory = parse_theory(read_source(path), project.keywords_for(path))
+            for instance in instances(theory, name, path):
+                e = instance.entity
+                rows.append(
+                    {
+                        "kind": e.kind,
+                        "name": e.name,
+                        "target": instance.target,
+                        "arguments": instance.arguments,
+                        "command": e.command,
+                        "session": session.name,
+                        "path": display_path(path),
+                        "line": e.line,
+                    }
+                )
+    return Table(
+        "instances",
+        "Instances and interpretations",
+        [
+            Column("kind", "kind"),
+            Column("name", "name"),
+            Column("target", "of"),
+            Column("arguments", "arguments"),
+            Column("command", "command"),
+            Column("session", "session"),
+            Column("path", "path"),
+            Column("line", "line", True),
+        ],
+        rows,
+    )
+
+
+def run_instances(args: argparse.Namespace) -> int:
+    RENDERERS[args.format]([instances_table(_load(args))], sys.stdout)
     return 0
 
 

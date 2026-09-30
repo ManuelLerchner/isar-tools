@@ -17,6 +17,9 @@
   `extract bot` gives HOL's `class bot`.
 - `isar project names FILE.thy ...` lists the declarations of those theory files only,
   such as a few of HOL's without reading every HOL session.
+- `isar project instances`: every `instantiation`, `instance t :: c`, `interpretation`,
+  and `global_interpretation` of the project, with its name (`t :: c` or the qualifier),
+  its class or locale, and the locale's arguments.
 
 ## 0.2.0 (2026-09-27)
 

@@ -1,0 +1,6 @@
+Instances and interpretations
+kind            name                    of              arguments  command                session  path   line
+--------------  ----------------------  --------------  ---------  ---------------------  -------  -----  ----
+instance        sign :: numeric_domain  numeric_domain             instantiation          S        T.thy     2
+interpretation  sign_tf                 mono_ops        sign_ops   global_interpretation  S        T.thy     5
+interpretation                          loc             2          interpretation         S        T.thy     7

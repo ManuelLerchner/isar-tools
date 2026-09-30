@@ -1,0 +1,34 @@
+{
+  "instances": [
+    {
+      "kind": "instance",
+      "name": "sign :: numeric_domain",
+      "target": "numeric_domain",
+      "arguments": "",
+      "command": "instantiation",
+      "session": "S",
+      "path": "T.thy",
+      "line": 2
+    },
+    {
+      "kind": "interpretation",
+      "name": "sign_tf",
+      "target": "mono_ops",
+      "arguments": "sign_ops",
+      "command": "global_interpretation",
+      "session": "S",
+      "path": "T.thy",
+      "line": 5
+    },
+    {
+      "kind": "interpretation",
+      "name": "",
+      "target": "loc",
+      "arguments": "2",
+      "command": "interpretation",
+      "session": "S",
+      "path": "T.thy",
+      "line": 7
+    }
+  ]
+}

@@ -47,6 +47,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
 | `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
 | `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project instances`                 | Class instances and locale interpretations, with their class or locale                     |
 | `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
 | `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
 | `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
