@@ -96,6 +96,7 @@ isar check docs src/              # theories, headings, locales, classes without
 isar check leftovers hygiene src/ # sledgehammer, thm, nitpick without expect; tabs, CRs
 isar check retired --retired-file retired.txt src/   # removed names that came back
 isar check prose src/             # names cited in text blocks; raw _ that LaTeX rejects
+isar check links site/index.html --browser-info browser_info   # links into HTML theories
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
@@ -112,6 +113,7 @@ isar check --ignore oops --format json
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
 | `prose`     | `prose-reference`, `prose-underscore` (opt-in)                                                                                                                 |
+| `links`     | `broken-link`, `broken-anchor`, `anchor-name` (opt-in)                                                                                                         |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
@@ -142,6 +144,16 @@ directories declare (derived facts included) or use in their formal text;
 only names of at least four characters with an underscore are read, and
 `--allow NAME` accepts one. A `prose-underscore` is a raw `_` in the outer
 prose, which reaches LaTeX unescaped and fails the document build.
+
+`links` reads `.html` and `.md` files for links into Isabelle's HTML
+presentation, where each definition has an anchor such as
+`Theory.loc.name|fact`. With `--browser-info DIR`, a link into DIR (relative to
+the file, below a `--link-base URL`, or starting with a chapter directory of
+DIR) must name an existing page and anchor. Without a build, an anchor is
+compared with the declarations: it must start with its page's theory, and a
+name the theory declares once must carry its scope (`Theory.loc.name`, not
+`Theory.name`). `project names --format json` gives each declaration's `anchor`
+and its `url` below browser_info.
 
 ### Commands of other sessions
 

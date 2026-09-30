@@ -10,13 +10,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
+from urllib.parse import quote
 
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
 from isar_tools.project.names import (
+    ANCHOR_SAFE,
     KINDS,
     Entity,
     Interpretation,
+    anchor,
     entities,
     instances,
     interpretations,
@@ -446,15 +449,24 @@ def run_instances(args: argparse.Namespace) -> int:
 class _Found:
     entity: Entity
     theory: Theory | None  # None for a fact an interpretation makes
-    session: str  # "" for a theory of no known session
+    session: Session | None  # None for a theory of no known session
     external: bool = False  # from a -d directory or a file outside every session
 
+    @property
+    def session_name(self) -> str:
+        return self.session.name if self.session is not None else ""
 
-_Interpretation = tuple[Interpretation, str]  # and the session of its theory
+
+_Interpretation = tuple[Interpretation, Session | None]  # and the session of its theory
 
 
 def _theory_entities(
-    project: Project | None, path: Path, derived: bool, named: bool, session: str, external: bool
+    project: Project | None,
+    path: Path,
+    derived: bool,
+    named: bool,
+    session: Session | None,
+    external: bool,
 ) -> tuple[list[_Found], list[_Interpretation]]:
     """The declarations of one theory file, and its qualified interpretations
     if ``derived``. Without a ``project``, the file is read on its own."""
@@ -491,9 +503,7 @@ def _entities(
         if session.external and not external:
             continue
         for path in project.owned_theories(session).values():
-            more, made = _theory_entities(
-                project, path, derived, named, session.name, session.external
-            )
+            more, made = _theory_entities(project, path, derived, named, session, session.external)
             found += more
             interps += made
     return _with_interpretations(found, interps)
@@ -601,7 +611,7 @@ def _pinned(project: Project, files: Iterable[Path | None]) -> list[_Found]:
     found: list[_Found] = []
     for path in dict.fromkeys(f.resolve() for f in files if f is not None):
         if project.session_of(path) is None and path.is_file():
-            found += _theory_entities(None, path, False, True, "", True)[0]
+            found += _theory_entities(None, path, False, True, None, True)[0]
     return found
 
 
@@ -687,6 +697,16 @@ def _qualified_hit(entity: Entity, name: str) -> bool:
     return name in (entity.name, entity.qualified)
 
 
+def _url(found: _Found) -> str:
+    """Where Isabelle's HTML presentation shows the declaration, relative to
+    its browser_info directory: ``Chapter/Session/Theory.html#anchor``; ""
+    for a theory of no session."""
+    if found.session is None or not anchor(found.entity):
+        return ""
+    page = f"{found.session.spec.chapter}/{found.session.name}/{found.entity.theory}.html"
+    return f"{page}#{quote(anchor(found.entity), safe=ANCHOR_SAFE)}"
+
+
 def _statement(found: _Found) -> str:
     """The statement of a declaration; "" for a derived fact."""
     if found.theory is None or found.entity.derived_from:
@@ -706,7 +726,9 @@ def names_table(
                 "name": e.qualified,
                 "kind": e.kind,
                 "command": e.command,
-                "session": f.session,
+                "session": f.session_name,
+                "anchor": anchor(e),
+                "url": _url(f),
                 "path": display_path(e.path),
                 "line": e.line,
                 "end_line": e.end_line,
@@ -735,6 +757,7 @@ def names_table(
                 if docs
                 else []
             ),
+            *([Column("anchor", "anchor"), Column("url", "url")] if docs else []),
             *([Column("statement", "statement")] if statements else []),
         ],
         rows,
@@ -758,7 +781,7 @@ def write_index(found: list[_Found], out: TextIO) -> None:
     session_name = ""
     path: Path | None = None
     for f in found:
-        e, name = f.entity, f.session
+        e, name = f.entity, f.session_name
         if name != session_name or path is None:
             session_name = name
             out.write(f"\n## Session {name}\n")
@@ -783,8 +806,7 @@ def _named(paths: list[Path], include: list[Path], derived: bool) -> list[_Found
             root = project_root(path)
             project = projects.get(root) or projects.setdefault(root, Project.load(root, include))
             session = project.session_of(path)
-            name = session.name if session is not None else ""
-            more, made = _theory_entities(project, path.resolve(), derived, False, name, False)
+            more, made = _theory_entities(project, path.resolve(), derived, False, session, False)
             found += more
             interps += made
         else:

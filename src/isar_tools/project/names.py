@@ -610,6 +610,30 @@ def source(theory: Theory, entity: Entity, statement: bool = False) -> str:
     return textwrap.dedent(text).rstrip() + "\n"
 
 
+# The kind in the id Isabelle's HTML presentation gives a definition:
+# `<span class="entity_def" id="Theory.loc.name|fact">`.
+ANCHOR_KINDS = {
+    "fact": "fact",
+    "constant": "const",
+    "type": "type",
+    "locale": "locale",
+    "class": "class",
+    "bundle": "bundle",
+}
+# Characters an anchor keeps in a URL; `|` and symbols are percent-encoded.
+ANCHOR_SAFE = "._()'"
+
+
+def anchor(entity: Entity) -> str:
+    """The HTML anchor of the entity's definition, ``Theory.loc.name|kind``;
+    "" for an instance, an interpretation, or a locale parameter, which have
+    none."""
+    kind = ANCHOR_KINDS.get(entity.kind)
+    # A class's parameters are constants (`c_class.op`); a locale's are not.
+    parameter = entity.command in ("fixes", "for") and not entity.scope.endswith("_class")
+    return f"{entity.qualified}|{kind}" if kind and not parameter else ""
+
+
 def matches(entity: Entity, name: str) -> bool:
     """Whether ``name`` (``base``, ``scope.base``, ``Theory.base``, or
     ``Theory.scope.base``) refers to ``entity``."""

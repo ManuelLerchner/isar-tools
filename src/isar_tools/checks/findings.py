@@ -62,6 +62,9 @@ CODES: dict[str, tuple[str, str]] = {
     "retired-identifier": ("retired", "an identifier the project lists as removed comes back"),
     "prose-reference": ("prose", "a plain cartouche in document text names no declaration"),
     "prose-underscore": ("prose", "a raw _ in document text, which LaTeX rejects"),
+    "broken-link": ("links", "a link into Isabelle's HTML theories names no page"),
+    "broken-anchor": ("links", "a link into Isabelle's HTML theories names no anchor"),
+    "anchor-name": ("links", "a theory anchor spells a name other than the theory declares it"),
 }
 
 GROUPS = (
@@ -75,5 +78,6 @@ GROUPS = (
     "leftovers",
     "retired",
     "prose",
+    "links",
 )
 DEFAULT_GROUPS = ("project", "proofs", "syntax")
