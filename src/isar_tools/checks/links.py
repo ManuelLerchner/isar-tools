@@ -112,7 +112,8 @@ def check_built(
             continue
         page, fragment = found
         if not page.is_file():
-            message = f"{link.target}: no page {page.relative_to(browser_info.resolve())}"
+            missing = page.relative_to(browser_info.resolve()).as_posix()
+            message = f"{link.target}: no page {missing}"
             findings.append(Finding.at(path, lines, link.offset, "broken-link", message))
         elif fragment and fragment not in pages.ids(page):
             message = f"{link.target}: {page.name} has no anchor {fragment}"
