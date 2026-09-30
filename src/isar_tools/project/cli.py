@@ -124,6 +124,11 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         help="also list derived facts (f_def, f.simps, the rules of an inductive, L.intro, "
         "...) and the facts of qualified interpretations (q.fact)",
     )
+    names.add_argument(
+        "--statements",
+        action="store_true",
+        help="add each declaration's statement, as extract --statement prints it (json and csv)",
+    )
     names.add_argument("--format", choices=sorted(RENDERERS), default="text")
     add_include_option(names)
     names.set_defaults(func=run_names)
@@ -680,12 +685,22 @@ def _qualified_hit(entity: Entity, name: str) -> bool:
     return name in (entity.name, entity.qualified)
 
 
-def names_table(found: list[_Found], docs: bool, derived: bool = False) -> Table:
+def _statement(found: _Found) -> str:
+    """The statement of a declaration; "" for a derived fact."""
+    if found.theory is None or found.entity.derived_from:
+        return ""
+    return source(found.theory, found.entity, statement=True)
+
+
+def names_table(
+    found: list[_Found], docs: bool, derived: bool = False, statements: bool = False
+) -> Table:
     rows: list[dict[str, Cell]] = []
     for f in found:
         e = f.entity
         rows.append(
             {
+                "statement": _statement(f) if statements else "",
                 "name": e.qualified,
                 "kind": e.kind,
                 "command": e.command,
@@ -710,6 +725,7 @@ def names_table(found: list[_Found], docs: bool, derived: bool = False) -> Table
             Column("end_line", "end", True),
             *([Column("derived_from", "from")] if derived else []),
             *([Column("doc", "doc")] if docs else []),
+            *([Column("statement", "statement")] if statements else []),
         ],
         rows,
     )
@@ -767,6 +783,8 @@ def _named(paths: list[Path], include: list[Path], derived: bool) -> list[_Found
 
 
 def run_names(args: argparse.Namespace) -> int:
+    if args.statements and args.format not in ("json", "csv"):
+        raise InputError("--statements needs --format json or csv")
     found = _named(list(dict.fromkeys(args.paths)) or [Path()], args.include, args.derived)
     if args.kind:
         found = [f for f in found if f.entity.kind in args.kind]
@@ -785,6 +803,8 @@ def run_names(args: argparse.Namespace) -> int:
         write_index(found, sys.stdout)
     else:
         # Docstrings span lines, which a text table cannot show.
-        table = names_table(found, docs=args.format != "text", derived=args.derived)
+        table = names_table(
+            found, docs=args.format != "text", derived=args.derived, statements=args.statements
+        )
         RENDERERS[args.format]([table], sys.stdout)
     return 1 if missing else 0

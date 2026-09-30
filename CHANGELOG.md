@@ -20,6 +20,8 @@
 - `isar project instances`: every `instantiation`, `instance t :: c`, `interpretation`,
   and `global_interpretation` of the project, with its name (`t :: c` or the qualifier),
   its class or locale, and the locale's arguments.
+- `isar project names --statements` (JSON and CSV): a `statement` column with each
+  declaration's statement as `extract --statement` prints it, for every lemma in one call.
 
 ## 0.2.0 (2026-09-27)
 

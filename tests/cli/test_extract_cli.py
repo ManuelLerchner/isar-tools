@@ -329,3 +329,28 @@ def test_instances_view(
     monkeypatch.chdir(base)
     assert main(["project", "instances", "--format", fmt]) == 0
     golden(f"extract/instances.{'txt' if fmt == 'text' else fmt}", capsys.readouterr().out)
+
+
+def test_names_statements(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*NAMES, "--statements", "--derived", "--format", "json"]) == 0
+    rows = {r["name"]: r["statement"] for r in json.loads(capsys.readouterr().out)["names"]}
+    assert rows["A.succ_pos"] == 'lemma succ_pos: "succ n > 0"\n'
+    assert rows["B.l"] == "locale l = fixes x :: nat\n"
+    assert rows["A.succ_def"] == ""  # derived
+    assert main([*NAMES, "--statements"]) == 2
+    assert "--statements needs --format json or csv" in capsys.readouterr().err
+
+
+def test_names_statements_of_interpretation_facts(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories L I",
+            "L.thy": 'theory L imports Main begin\nlocale l = assumes a: "True"\nend\n',
+            "I.thy": "theory I imports L begin\ninterpretation q: l by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "--derived", "--statements", "--name", "I.q.a", "--format", "csv"]) == 0
+    assert capsys.readouterr().out.splitlines()[1].endswith(",")  # no statement

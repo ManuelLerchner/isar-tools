@@ -144,6 +144,7 @@ isar project names --format markdown > NAMES.md   # an index with docstrings
 isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
 isar project names --derived                      # also f_def, f.simps, L.intro, q.fact
 isar project names "$ISABELLE_HOME/src/HOL/Orderings.thy"   # one theory file alone
+isar project names --kind fact --statements --format json   # each lemma's statement
 ```
 
 Names are qualified as Isabelle renders them: a lemma inside `context loc` is
