@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+- `isar project names` lists the constructors, discriminators, and selectors of a
+  datatype or codatatype as constants named in the type (`t.C`, `t.sel`), and the
+  constants of `consts`.
+- `isar project extract --statement`: the statement without its proof, and a locale,
+  class, or instantiation without its `begin`. A manifest entry takes `proof = true` or
+  `false` to override it, and `name` to extract something other than its key.
+- `isar project extract` finds class instances by `type :: class` and qualified
+  interpretations by their qualifier.
+- `isar project extract` also finds declarations of `-d` directories when the project
+  has none of the name, and a manifest `file` may be `~~/src/HOL/...`, read below
+  `ISABELLE_HOME` (skipped with a note when it is unset) and printed back as `~~/`. A
+  declaration wins over parameters, fields, and constructors of the same name, so
+  `extract bot` gives HOL's `class bot`.
+- `isar project names FILE.thy ...` lists the declarations of those theory files only,
+  such as a few of HOL's without reading every HOL session.
+- `isar project instances`: every `instantiation`, `instance t :: c`, `interpretation`,
+  and `global_interpretation` of the project, with its name (`t :: c` or the qualifier),
+  its class or locale, and the locale's arguments.
+- `isar project names --statements` (JSON and CSV): a `statement` column with each
+  declaration's statement as `extract --statement` prints it, for every lemma in one call.
+- `isar project names` JSON and CSV: `mixfix`, `notation`, and `mode` (`input` for
+  `abbreviation (input)`) of constants, record fields, constructors, and locale
+  parameters. The parameters of a locale's `for` clause are listed as constants of the
+  locale (command `for`), and `hierarchy --format json` has them as `for_fixes`. A
+  mixfix keeps its spacing as written (`[51, 51] 50`, was `[ 51 , 51 ] 50`).
+- `isar check`: `theory-path` in the `project` group, a quoted `theories` entry with a
+  `/` (`theories "generated/Foo"`), which Isabelle does not load. The fix is
+  `directories "generated"` and `theories Foo`.
+
 ## 0.2.0 (2026-09-27)
 
 - Install from conda-forge: `pixi global install isar-tools` or

@@ -4,24 +4,34 @@ Read from the command structure, not by pattern matching lines, so a keyword
 inside a comment, string, or cartouche never counts. Each entity records
 
 - its base name and kind (``fact``, ``constant``, ``type``, ``locale``,
-  ``class``, ``bundle``);
+  ``class``, ``bundle``); the constructors, discriminators, and selectors of a
+  datatype and the fields of a record are constants named in the type
+  (``t.C``);
 - its scope: the locale or class it is declared in, from an ``(in loc)``
   target or the innermost enclosing ``locale``/``class``/``context NAME``
   block that is open (``begin`` ... ``end``); anonymous blocks add nothing;
-- its extent: the declaring command and, for a goal, its proof;
+- its extent: the declaring command and, for a goal, its proof; its statement
+  is the command alone, without the ``begin`` of a block it opens;
 - its docstring: a ``text`` block directly before it.
 
 The qualified name is ``Theory.scope.name``, as Isabelle's rendered theories
 spell it. Names a command derives (``foo_def``, ``foo.simps``) and names made
-by interpretations are not listed.
+by interpretations are listed only on request (``derived``).
 """
 
 import textwrap
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 
-from isar_tools.project.hierarchy import parse_declaration
+from isar_tools.project.hierarchy import (
+    Parameter,
+    bracket_group,
+    parse_declaration,
+    parse_fixes,
+    parse_mixfix,
+)
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import Kind, Token
 from isar_tools.source.theory import Command, Theory, significant, unquote
@@ -42,6 +52,7 @@ KINDS: dict[str, str] = {
     ),
     **dict.fromkeys(
         [
+            "consts",
             "definition",
             "abbreviation",
             "fun",
@@ -113,6 +124,15 @@ class Entity:
     end: int  # text offset after its last token
     doc: str  # the text block directly before; "" if none
     derived_from: str = ""  # qualified name of the declaration this fact comes from
+    # Text offset after the statement: the declaring command without its proof
+    # or the `begin` of the block it opens.
+    statement_end: int = 0
+    # Declared as part of another declaration: a parameter or assumption of a
+    # locale, a record field, a datatype constructor or selector.
+    member: bool = False
+    mixfix: str = ""  # the text inside a constant's mixfix annotation; "" if none
+    notation: str = ""  # the first string or cartouche of the mixfix; "" if none
+    mode: str = ""  # the syntax mode of `abbreviation (input)`: "input"; "" if none
 
     @property
     def qualified(self) -> str:
@@ -137,35 +157,58 @@ def _target(toks: list[Token]) -> tuple[str, int]:
     return "", 0
 
 
-def _split_and(toks: list[Token]) -> Iterator[list[Token]]:
+def _top(toks: list[Token]) -> Iterator[tuple[int, Token]]:
+    """Tokens outside brackets, with their index; brackets are not yielded."""
     depth = 0
-    part: list[Token] = []
-    for tok in toks:
-        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
-        if depth == 0 and tok.kind is Kind.WORD and tok.text == "and":
-            yield part
-            part = []
-        else:
-            part.append(tok)
-    yield part
+    for i, tok in enumerate(toks):
+        step = {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
+        depth += step
+        if depth == 0 and not step:
+            yield i, tok
 
 
-def _names(command: str, toks: list[Token]) -> list[str]:
-    """Names bound by ``command`` from its arguments ``toks``."""
+def _split_top(toks: list[Token], separator: str) -> list[list[Token]]:
+    """``toks`` split at ``separator`` outside brackets."""
+    cuts = [i for i, t in _top(toks) if t.text == separator and t.kind is not Kind.STRING]
+    return [toks[a + 1 : b] for a, b in zip([-1, *cuts], [*cuts, len(toks)], strict=True)]
+
+
+def _typed(toks: list[Token]) -> list[Parameter]:
+    """Constants declared as ``f :: T (mixfix)``, one after another, as in
+    ``consts`` and in the body of a record."""
+    starts = [i for i, t in _top(toks) if t.kind is Kind.WORD and _follows(toks, i) == "::"]
+    ends = [*starts[1:], len(toks)]
+    return [p for a, b in zip(starts, ends, strict=True) for p in parse_fixes(toks[a:b])]
+
+
+def _plain(name: str) -> Parameter:
+    return Parameter(name, "", "", "")
+
+
+def _follows(toks: list[Token], i: int) -> str:
+    return toks[i + 1].text if i + 1 < len(toks) else ""
+
+
+def _names(command: str, toks: list[Token]) -> list[Parameter]:
+    """Names bound by ``command`` from its arguments ``toks``, with the type
+    and mixfix of a constant."""
     kind = KINDS[command]
     if kind == "fact":
         if not toks or toks[0].kind not in (Kind.WORD, Kind.STRING) or toks[0].text in _ELEMENTS:
             return []
         follow = toks[1].text if len(toks) > 1 else ""
         if command in ("lemmas", "theorems", "named_theorems") or follow in (":", "[", "="):
-            return [unquote(toks[0])]
+            return [_plain(unquote(toks[0]))]
         return []
     if kind in ("locale", "class", "bundle"):
-        return [unquote(toks[0])] if toks and toks[0].kind in (Kind.WORD, Kind.STRING) else []
+        named = toks and toks[0].kind in (Kind.WORD, Kind.STRING)
+        return [_plain(unquote(toks[0]))] if named else []
+    if command == "consts":  # `consts f :: T g :: U`, without `and`
+        return _typed(toks)
     # Parameters (`for r`) and specifications (`where`) follow the names.
     stop = next((j for j, t in enumerate(toks) if t.text in ("where", "for")), len(toks))
-    names: list[str] = []
-    for part in _split_and(toks[:stop] if kind == "constant" else toks):
+    names: list[Parameter] = []
+    for part in _split_top(toks[:stop] if kind == "constant" else toks, "and"):
         i = 0
         while i < len(part) and (
             part[i].text == "(" or (command in _TYPE_PARAMS and part[i].text.startswith("'"))
@@ -176,7 +219,7 @@ def _names(command: str, toks: list[Token]) -> list[str]:
         follow = part[i + 1].text if i + 1 < len(part) else ""
         if follow in (":", "["):  # a fact name: `definition f_def: "f = ..."`
             continue
-        names.append(part[i].text)
+        names += parse_fixes(part[i:]) if kind == "constant" else [_plain(part[i].text)]
     return names
 
 
@@ -203,23 +246,46 @@ DERIVED: dict[str, tuple[str, ...]] = {
 }
 _INDUCTIVE = frozenset({"inductive", "inductive_set", "coinductive", "coinductive_set"})
 _INTERPRETATIONS = frozenset({"interpretation", "global_interpretation"})
+_DATATYPES = frozenset({"datatype", "codatatype"})
 
 
-def _record_fields(args: list[Token]) -> list[str]:
-    """Fields of ``record 'a r = parent + f :: T g :: U``: words before ``::``
-    at bracket depth 0, after the ``=``."""
+def _record_fields(args: list[Token]) -> list[Parameter]:
+    """Fields of ``record 'a r = parent + f :: T g :: U``."""
     eq = next((i for i, t in enumerate(args) if t.text == "="), None)
-    if eq is None:
-        return []
-    fields: list[str] = []
-    depth = 0
-    body = args[eq + 1 :]
-    for i, tok in enumerate(body):
-        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
-        following = body[i + 1].text if i + 1 < len(body) else ""
-        if depth == 0 and tok.kind is Kind.WORD and following == "::":
-            fields.append(tok.text)
-    return fields
+    return _typed(args[eq + 1 :]) if eq is not None else []
+
+
+def _constructors(args: list[Token]) -> Iterator[tuple[str, Parameter]]:
+    """``(type, constant)`` for the constructors of ``datatype t = is_A: A
+    (sel: T) | B (mixfix) and u = C``, their discriminators (``is_A``), and
+    their selectors (``sel``)."""
+    stop = next((i for i, t in _top(args) if t.text in ("where", "for")), len(args))
+    for part in _split_top(args[:stop], "and"):
+        eq = next((i for i, t in _top(part) if t.text == "="), len(part))
+        # The type's name follows its parameters and the options in brackets.
+        head = [t for _, t in _top(part[:eq]) if not t.text.startswith("'")]
+        if not head or head[-1].kind is not Kind.WORD:
+            continue
+        found: dict[str, Parameter] = {}
+        for alt in _split_top(part[eq + 1 :], "|"):
+            if len(alt) > 2 and alt[1].text == ":":  # a discriminator
+                found.setdefault(alt[0].text, _plain(alt[0].text))
+                alt = alt[2:]
+            if not alt or alt[0].kind is not Kind.WORD:
+                continue
+            constructor = alt[0].text
+            found.setdefault(constructor, _plain(constructor))
+            i = 1
+            while i < len(alt):
+                if alt[i].text != "(":
+                    i += 1
+                    continue
+                group, i = bracket_group(alt, i)
+                if len(group) > 3 and group[1].kind is Kind.WORD and group[2].text == ":":
+                    found.setdefault(group[1].text, _plain(group[1].text))  # a selector
+                else:  # arguments are types, never in brackets: the mixfix
+                    found[constructor] = Parameter(constructor, "", *parse_mixfix(group))
+        yield from ((head[-1].text, constant) for constant in found.values())
 
 
 def _rule_names(args: list[Token]) -> list[str]:
@@ -274,15 +340,12 @@ def interpretations(theory: Theory, name: str, path: Path) -> Iterator[Interpret
         elif command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
             depth += 1
         elif command.name in _INTERPRETATIONS and depth == 0:
-            if len(args) >= 3 and args[0].kind is Kind.WORD and args[1].text in (":", "?:"):
-                locale = args[2]
-            elif len(args) >= 4 and args[1].text == "?" and args[2].text == ":":
-                locale = args[3]
-            else:
+            qualifier, expression = _qualifier(args)
+            if not qualifier:
                 continue
             yield Interpretation(
-                args[0].text,
-                unquote(locale),
+                qualifier,
+                unquote(expression[0]),
                 command.name,
                 name,
                 path,
@@ -312,30 +375,33 @@ def interpreted(facts: list[Entity], interpretation: Interpretation) -> Iterator
             )
 
 
+def _extent(theory: Theory, commands: list[Command], i: int, stop: int) -> tuple[int, int, int]:
+    """The start of the line of ``commands[i]``, the end of its statement,
+    and the end of ``commands[i:stop]``, the command with its proof."""
+    command = commands[i]
+    toks = list(significant(command.tokens(theory.tokens)))
+    if command.kind is CommandKind.THY_DECL_BLOCK and len(toks) > 1 and toks[-1].text == "begin":
+        statement_end = toks[-2].end
+    else:
+        statement_end = theory.end(command)
+    start = theory.text.rfind("\n", 0, theory.start(command)) + 1
+    return start, statement_end, theory.end(commands[stop - 1])
+
+
 def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> Iterator[Entity]:
     """Every named declaration of ``theory`` (named ``name``, read from
     ``path``); with ``derived``, also the facts the declarations derive
     (``f_def``, ``f.simps``, the rules of an inductive, ...)."""
     stops = {b.statement: b.stop for b in theory.goal_blocks()}
-    scopes: list[str] = []  # "" for an anonymous block
     commands = theory.commands
-    for i, command in enumerate(commands):
-        toks = list(significant(command.tokens(theory.tokens)))
-        while toks and toks[0].text != command.name:  # `private`, `qualified`
-            toks.pop(0)
-        args = toks[1:]
-        if command.kind is CommandKind.THY_END and command.name == "end":
-            if scopes:
-                scopes.pop()
-            continue
+    for i, command, args, enclosing in _walk(theory):
         if command.name in KINDS:
             target, j = _target(args)
-            scope = target or next((s for s in reversed(scopes) if s), "")
-            last = commands[stops.get(i, i + 1) - 1]
-            start = theory.start(command)
-            start = theory.text.rfind("\n", 0, start) + 1
-            end = theory.end(last)
-            for bound in _names(command.name, args[j:]):
+            scope = target or enclosing
+            start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
+            mode = _mode(command.name, args[j:])
+            for declared in _names(command.name, args[j:]):
+                bound = declared.name
                 entity = Entity(
                     name=bound,
                     kind=KINDS[command.name],
@@ -348,60 +414,199 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                     start=start,
                     end=end,
                     doc=_doc(theory, commands[i - 1] if i else None),
+                    statement_end=statement_end,
+                    mixfix=declared.mixfix,
+                    notation=declared.notation,
+                    mode=mode,
                 )
                 yield entity
-                # Parameters (`fixes`) are constants of the locale, and named
+                member = partial(replace, entity, doc="", member=True, mode="")
+                # Parameters (`fixes`, and the `for` clause of the parent
+                # expression) are constants of the locale, and named
                 # assumptions its facts; a class's are named in its `_class`
                 # locale: `c_class.op`.
                 if command.name in ("locale", "class"):
                     declaration = parse_declaration(theory, command, path)
                     local = bound if command.name == "locale" else f"{bound}_class"
-                    for parameter in declaration.fixes if declaration else []:
-                        yield replace(
-                            entity,
-                            name=parameter.name,
+                    fixes = declaration.fixes if declaration else []
+                    for_fixes = declaration.for_fixes if declaration else []
+                    parameters = [("fixes", p) for p in fixes] + [("for", p) for p in for_fixes]
+                    for keyword, p in parameters:
+                        yield member(
+                            name=p.name,
                             kind="constant",
-                            command="fixes",
+                            command=keyword,
                             scope=local,
-                            doc="",
+                            mixfix=p.mixfix,
+                            notation=p.notation,
                         )
-                    # Named assumptions are facts of the locale.
                     for assumption in declaration.assumes if declaration else []:
                         if assumption.name:
-                            yield replace(
-                                entity,
+                            yield member(
                                 name=assumption.name,
                                 kind="fact",
                                 command="assumes",
                                 scope=local,
-                                doc="",
+                                mixfix="",
+                                notation="",
                             )
                 # Record fields are constants named in the record: `r.field`.
                 if command.name == "record":
-                    for field_name in _record_fields(args[j:]):
-                        yield replace(
-                            entity,
-                            name=field_name,
+                    for field in _record_fields(args[j:]):
+                        yield member(
+                            name=field.name,
                             kind="constant",
-                            command="record",
                             scope=bound,
-                            doc="",
+                            mixfix=field.mixfix,
+                            notation=field.notation,
                         )
+                # Constructors, discriminators, and selectors: `t.C`.
+                if command.name in _DATATYPES:
+                    for type_name, constant in _constructors(args[j:]):
+                        if type_name == bound:
+                            yield member(
+                                name=constant.name,
+                                kind="constant",
+                                scope=bound,
+                                mixfix=constant.mixfix,
+                                notation=constant.notation,
+                            )
                 if derived:
                     for fact in _derived(command.name, bound, args[j:]):
                         yield replace(
-                            entity, name=fact, kind="fact", doc="", derived_from=entity.qualified
+                            entity,
+                            name=fact,
+                            kind="fact",
+                            doc="",
+                            derived_from=entity.qualified,
+                            mixfix="",
+                            notation="",
+                            mode="",
                         )
+
+
+def _mode(command: str, args: list[Token]) -> str:
+    """The syntax mode of ``abbreviation (input)`` or ``(output)``; "" if none."""
+    if command == "abbreviation" and len(args) > 2 and args[0].text == "(" and args[2].text == ")":
+        return args[1].text
+    return ""
+
+
+def _walk(theory: Theory) -> Iterator[tuple[int, Command, list[Token], str]]:
+    """Each command but ``end`` with its index, its arguments (after
+    ``private`` or ``qualified`` and the keyword), and the innermost named
+    locale or class block it is in ("" if none)."""
+    scopes: list[str] = []  # "" for an anonymous block
+    for i, command in enumerate(theory.commands):
+        toks = list(significant(command.tokens(theory.tokens)))
+        while toks and toks[0].text != command.name:  # `private`, `qualified`
+            toks.pop(0)
+        args = toks[1:]
+        if command.kind is CommandKind.THY_END and command.name == "end":
+            if scopes:
+                scopes.pop()
+            continue
+        yield i, command, args, next((s for s in reversed(scopes) if s), "")
         if command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
             # `context fixes ... begin` is anonymous; `context loc begin` is not.
             named = command.name in _SCOPES and (command.name != "context" or len(args) == 2)
             scopes.append(unquote(args[0]) if named and len(args) >= 2 else "")
 
 
-def source(theory: Theory, entity: Entity) -> str:
+@dataclass(frozen=True)
+class Instance:
+    """A class instance (``instantiation`` or ``instance t :: c``, ``kind``
+    "instance") or a locale interpretation (``interpretation`` or
+    ``global_interpretation``, ``kind`` "interpretation"). ``entity`` is its
+    source, named ``t :: c`` or by the interpretation's qualifier ("" if it
+    has none); ``target`` is the class or locale, and ``arguments`` the text
+    of the locale expression after it."""
+
+    target: str
+    arguments: str
+    entity: Entity
+
+    @property
+    def kind(self) -> str:
+        return self.entity.kind
+
+
+_CLASS_INSTANCES = frozenset({"instantiation", "instance"})
+# Where the locale expression of an interpretation ends.
+_EXPRESSION_END = frozenset({"rewrites", "defines", "for", "begin"})
+
+
+def _qualifier(args: list[Token]) -> tuple[str, list[Token]]:
+    """``q: loc ...``, ``q?: loc ...``: the qualifier and the rest."""
+    if len(args) >= 3 and args[0].kind is Kind.WORD and args[1].text in (":", "?:"):
+        return args[0].text, args[2:]
+    if len(args) >= 4 and args[1].text == "?" and args[2].text == ":":
+        return args[0].text, args[3:]
+    return "", args
+
+
+def _instance_heads(
+    theory: Theory, command: Command, args: list[Token]
+) -> list[tuple[str, str, str]]:
+    """``(name, target, arguments)`` of what ``command`` instantiates or
+    interprets: one per type of an instantiation, none for a subclass
+    ``instance c1 < c2`` or another command."""
+    if command.name in _CLASS_INSTANCES:
+        colons = next((i for i, t in _top(args) if t.text == "::"), None)
+        rest = args[colons + 1 :] if colons is not None else []
+        if rest and rest[0].text == "(":  # the sorts of the type's arguments
+            rest = rest[_skip_group(rest, 0) :]
+        if not rest or rest[0].kind not in (Kind.WORD, Kind.STRING):
+            return []
+        target = unquote(rest[0])
+        types = [unquote(t) for _, t in _top(args[:colons]) if t.text != "and"]
+        return [(f"{t} :: {target}", target, "") for t in types]
+    qualifier, expression = _qualifier(args)
+    if not expression:
+        return []
+    stop = next(
+        (i for i, t in _top(expression) if t.kind is Kind.WORD and t.text in _EXPRESSION_END),
+        len(expression),
+    )
+    rest = expression[1:stop]
+    arguments = " ".join(theory.text[rest[0].start : rest[-1].end].split()) if rest else ""
+    return [(qualifier, unquote(expression[0]), arguments)]
+
+
+def instances(theory: Theory, name: str, path: Path) -> Iterator[Instance]:
+    """The class instances and locale interpretations of ``theory`` (named
+    ``name``, read from ``path``)."""
+    stops = {b.statement: b.stop for b in theory.goal_blocks()}
+    commands = theory.commands
+    for i, command, args, scope in _walk(theory):
+        if command.name not in _CLASS_INSTANCES | _INTERPRETATIONS:
+            continue
+        start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
+        kind = "instance" if command.name in _CLASS_INSTANCES else "interpretation"
+        for bound, target, arguments in _instance_heads(theory, command, args):
+            entity = Entity(
+                name=bound,
+                kind=kind,
+                command=command.name,
+                theory=name,
+                scope=scope,
+                path=path,
+                line=theory.lines.line(theory.start(command)),
+                end_line=theory.lines.line(end),
+                start=start,
+                end=end,
+                doc=_doc(theory, commands[i - 1] if i else None),
+                statement_end=statement_end,
+            )
+            yield Instance(target, arguments, entity)
+
+
+def source(theory: Theory, entity: Entity, statement: bool = False) -> str:
     """The entity's source text, dedented, with ``\\n`` line breaks and one
-    final newline, so it does not depend on the line endings of a checkout."""
-    text = theory.text[entity.start : entity.end].replace("\r\n", "\n").replace("\r", "\n")
+    final newline, so it does not depend on the line endings of a checkout.
+    With ``statement``, only the statement: no proof, and no ``begin``."""
+    end = entity.statement_end if statement else entity.end
+    text = theory.text[entity.start : end].replace("\r\n", "\n").replace("\r", "\n")
     return textwrap.dedent(text).rstrip() + "\n"
 
 

@@ -8,7 +8,10 @@
       "path": "A.thy",
       "line": 2,
       "end_line": 3,
-      "doc": ""
+      "doc": "",
+      "mixfix": "",
+      "notation": "",
+      "mode": ""
     },
     {
       "name": "A.succ_pos",
@@ -18,7 +21,10 @@
       "path": "A.thy",
       "line": 5,
       "end_line": 6,
-      "doc": ""
+      "doc": "",
+      "mixfix": "",
+      "notation": "",
+      "mode": ""
     },
     {
       "name": "B.l",
@@ -28,7 +34,10 @@
       "path": "B.thy",
       "line": 2,
       "end_line": 2,
-      "doc": ""
+      "doc": "",
+      "mixfix": "",
+      "notation": "",
+      "mode": ""
     },
     {
       "name": "B.l.x",
@@ -38,7 +47,10 @@
       "path": "B.thy",
       "line": 2,
       "end_line": 2,
-      "doc": ""
+      "doc": "",
+      "mixfix": "",
+      "notation": "",
+      "mode": ""
     },
     {
       "name": "B.l.succ_pos",
@@ -48,7 +60,10 @@
       "path": "B.thy",
       "line": 3,
       "end_line": 4,
-      "doc": ""
+      "doc": "",
+      "mixfix": "",
+      "notation": "",
+      "mode": ""
     }
   ]
 }

@@ -5,6 +5,7 @@ import pytest
 from isar_tools.project.names import (
     Entity,
     entities,
+    instances,
     interpretations,
     interpreted,
     matches,
@@ -87,6 +88,9 @@ def test_names_kinds_and_scopes(found: dict[str, Entity]) -> None:
         "T.pair": ("type", "datatype"),
         "T.other": ("type", "datatype"),
         "T.box": ("type", "datatype"),
+        "T.pair.Pair": ("constant", "datatype"),
+        "T.other.Other": ("constant", "datatype"),
+        "T.box.Box": ("constant", "datatype"),
         "T.tuple": ("type", "type_synonym"),
         "T.point": ("type", "record"),
         "T.top": ("fact", "lemma"),
@@ -120,6 +124,15 @@ def test_source_includes_proof_and_modifier(found: dict[str, Entity]) -> None:
     )
     assert source(theory, found["T.hidden"]) == 'private lemma hidden: "True" by simp\n'
     assert source(theory, found["T.even"]).endswith('| "odd 0 = False"\n')
+
+
+def test_source_statement(found: dict[str, Entity]) -> None:
+    theory = parse_theory(SOURCE)
+    assert source(theory, found["T.loc.in_loc"], statement=True) == 'lemma in_loc [simp]: "n = n"\n'
+    assert source(theory, found["T.loc"], statement=True) == "locale loc =\n  fixes n :: nat\n"
+    assert source(theory, found["T.b"], statement=True) == "bundle b\n"
+    # Without a proof or `begin`, the statement is the whole source.
+    assert source(theory, found["T.succ"], statement=True) == source(theory, found["T.succ"])
 
 
 def test_source_dedents() -> None:
@@ -197,6 +210,44 @@ def test_record_without_equals() -> None:
     assert [e.name for e in entities(theory, "D", P)] == ["r"]
 
 
+def test_constructors_selectors_and_consts() -> None:
+    theory = parse_theory(
+        r"""theory D imports Main begin
+datatype (plugins del: size) edge = Skip | is_asg: Assign (var: nat) (rhs: "nat list")
+  | Call "nat" ("call _" 60)
+  and 'a tree = Leaf | Node "'a tree" (val: 'a) "'a tree"
+  for map: tmap
+datatype broken
+datatype odd = Odd | and = Unnamed
+codatatype 'a stream = SCons (shd: 'a) (stl: "'a stream")
+consts gamma :: "nat \<Rightarrow> nat set" ("\<lbrakk>_\<rbrakk>") delta :: nat
+end"""
+    )
+    found = {e.qualified: (e.kind, e.command) for e in entities(theory, "D", P)}
+    assert found == {
+        "D.edge": ("type", "datatype"),
+        "D.edge.Skip": ("constant", "datatype"),
+        "D.edge.is_asg": ("constant", "datatype"),
+        "D.edge.Assign": ("constant", "datatype"),
+        "D.edge.var": ("constant", "datatype"),
+        "D.edge.rhs": ("constant", "datatype"),
+        "D.edge.Call": ("constant", "datatype"),
+        "D.tree": ("type", "datatype"),
+        "D.tree.Leaf": ("constant", "datatype"),
+        "D.tree.Node": ("constant", "datatype"),
+        "D.tree.val": ("constant", "datatype"),
+        "D.broken": ("type", "datatype"),
+        "D.odd": ("type", "datatype"),
+        "D.odd.Odd": ("constant", "datatype"),
+        "D.stream": ("type", "codatatype"),
+        "D.stream.SCons": ("constant", "codatatype"),
+        "D.stream.shd": ("constant", "codatatype"),
+        "D.stream.stl": ("constant", "codatatype"),
+        "D.gamma": ("constant", "consts"),
+        "D.delta": ("constant", "consts"),
+    }
+
+
 def test_interpretations() -> None:
     theory = parse_theory(DERIVED_SOURCE)
     facts = list(entities(theory, "D", P, derived=True))
@@ -209,3 +260,84 @@ def test_interpretations() -> None:
 def test_optional_qualifier() -> None:
     theory = parse_theory("theory D imports Main begin\ninterpretation q?: base 1 by simp\nend")
     assert [i.qualifier for i in interpretations(theory, "D", P)] == ["q"]
+
+
+INSTANCE_SOURCE = r"""theory I imports Main begin
+instantiation sign :: numeric_domain
+begin
+definition "g = 0"
+instance proof
+qed
+end
+instantiation prod :: (order, order) order begin end
+instantiation a and b :: c begin end
+instance nat :: c by simp
+instance c1 < c2 by simp
+instance nat :: (c)
+global_interpretation sign_tf: mono_ops "sign_ops" 1
+  rewrites "x = y" by simp
+interpretation opt?: loc where f = g defines h = "k" by simp
+interpretation loc 2 by simp
+context loc begin
+interpretation inner: loc 3 by simp
+end
+interpretation
+end
+"""
+
+
+def test_instances() -> None:
+    theory = parse_theory(INSTANCE_SOURCE)
+    found = [
+        (i.kind, i.entity.qualified, i.target, i.arguments, i.entity.command)
+        for i in instances(theory, "I", P)
+    ]
+    assert found == [
+        ("instance", "I.sign :: numeric_domain", "numeric_domain", "", "instantiation"),
+        ("instance", "I.prod :: order", "order", "", "instantiation"),
+        ("instance", "I.a :: c", "c", "", "instantiation"),
+        ("instance", "I.b :: c", "c", "", "instantiation"),
+        ("instance", "I.nat :: c", "c", "", "instance"),
+        ("interpretation", "I.sign_tf", "mono_ops", '"sign_ops" 1', "global_interpretation"),
+        ("interpretation", "I.opt", "loc", "where f = g", "interpretation"),
+        ("interpretation", "I", "loc", "2", "interpretation"),
+        ("interpretation", "I.loc.inner", "loc", "3", "interpretation"),
+    ]
+    first = next(instances(theory, "I", P)).entity
+    assert (first.line, first.end_line) == (2, 3)  # the block is not part of it
+    assert source(theory, first, statement=True) == "instantiation sign :: numeric_domain\n"
+    tf = next(i.entity for i in instances(theory, "I", P) if i.entity.name == "sign_tf")
+    assert source(theory, tf, statement=True).endswith('rewrites "x = y"\n')
+
+
+def test_mixfix_and_mode() -> None:
+    theory = parse_theory(
+        r"""theory M imports Main begin
+definition sup' :: "nat \<Rightarrow> nat" (infixl "\<squnion>" 65) where "sup' = max"
+abbreviation (input) le (\<open>_ \<preceq> _\<close>) where "le \<equiv> (\<le>)"
+consts gamma_S :: "'s \<Rightarrow> nat set" ("\<lbrakk>_\<rbrakk>")
+inductive cstep :: "nat \<Rightarrow> bool" ("\<turnstile> _" [51] 50) for g where "cstep 0"
+record point = px :: nat ("x\<^sub>p")
+datatype 'a seq = Nil ("[]") | Cons (hd: 'a) "'a seq" (infixr "#" 65)
+locale ctx = base f for f (infixl "\<cdot>" 70) + fixes z :: nat ("\<zero>")
+end"""
+    )
+    found = {
+        e.qualified: (e.command, e.mixfix, e.notation, e.mode) for e in entities(theory, "M", P)
+    }
+    assert found["M.sup'"] == ("definition", 'infixl "\\<squnion>" 65', "\\<squnion>", "")
+    assert found["M.le"] == (
+        "abbreviation",
+        "\\<open>_ \\<preceq> _\\<close>",
+        "_ \\<preceq> _",
+        "input",
+    )
+    assert found["M.gamma_S"] == ("consts", '"\\<lbrakk>_\\<rbrakk>"', "\\<lbrakk>_\\<rbrakk>", "")
+    assert found["M.cstep"][1:3] == ('"\\<turnstile> _" [51] 50', "\\<turnstile> _")
+    assert found["M.point.px"] == ("record", '"x\\<^sub>p"', "x\\<^sub>p", "")
+    assert found["M.seq.Nil"][2] == "[]"
+    assert found["M.seq.Cons"][2] == "#"
+    assert found["M.seq.hd"][1] == ""
+    assert found["M.ctx.f"] == ("for", 'infixl "\\<cdot>" 70', "\\<cdot>", "")
+    assert found["M.ctx.z"] == ("fixes", '"\\<zero>"', "\\<zero>", "")
+    assert list(found)[list(found).index("M.seq") + 1] == "M.seq.Nil"

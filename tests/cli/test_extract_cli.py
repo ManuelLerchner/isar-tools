@@ -96,6 +96,96 @@ def test_manifest_file_pins(project: Path, capsys: pytest.CaptureFixture[str]) -
     ]
 
 
+def test_statement(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*EXTRACT, "A.succ_pos", "--statement", "--format", "json"]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert (row["source"], row["line"], row["end_line"]) == ('lemma succ_pos: "succ n > 0"\n', 5, 5)
+    assert main([*EXTRACT, "l", "--statement"]) == 0
+    assert capsys.readouterr().out == "(* B.thy *)\nlocale l = fixes x :: nat\n"
+
+
+def test_instances_by_name(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": "theory T imports Main begin\n"
+            "instantiation nat :: c begin\ninstance by simp\nend\n"
+            "global_interpretation q: loc 1\n  by simp\n"
+            "interpretation loc 2 by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*EXTRACT, "--statement", "nat::c", "q"]) == 0
+    assert capsys.readouterr().out == (
+        "(* T.thy *)\ninstantiation nat :: c\n\n(* T.thy *)\nglobal_interpretation q: loc 1\n"
+    )
+    assert main([*EXTRACT, "T.nat :: c", "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["kind"] == "instance"
+
+
+def test_outside_the_project(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "p/ROOT": "session P = L + theories A",
+            "p/A.thy": 'theory A imports L.B begin\nlemma shared: "True" by simp\nend\n',
+            "lib/ROOT": "session L = HOL + theories B",
+            "lib/B.thy": "theory B imports Main begin\n"
+            'lemma shared: "True" by simp\nlemma only_lib: "True" by simp\n'
+            "locale ordering_top = fixes top :: 'a\nclass top = fixes top :: 'a\nend\n",
+            "home/src/HOL/Orderings.thy": "theory Orderings imports Main begin\n"
+            "class bot = fixes bot :: 'a\nbegin\nend\nend\n",
+            "m.toml": '[snippets.bot]\nfile = "~~/src/HOL/Orderings.thy"\n[snippets.only_lib]\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    monkeypatch.delenv("ISABELLE_HOME", raising=False)
+    project = [*EXTRACT, "--project", "p", "-d", "lib"]
+    # A -d session counts when the project has no declaration of the name.
+    assert main([*project, "only_lib", "shared", "--statement"]) == 0
+    assert capsys.readouterr().out == (
+        '(* lib/B.thy *)\nlemma only_lib: "True"\n\n(* p/A.thy *)\nlemma shared: "True"\n'
+    )
+    # A class wins over a parameter of the same name, its own or a locale's.
+    assert main([*project, "top", "--statement"]) == 0
+    assert capsys.readouterr().out == "(* lib/B.thy *)\nclass top = fixes top :: 'a\n"
+    # names lists the project's declarations only.
+    assert main([*NAMES, "p", "-d", "lib", "--format", "csv"]) == 0
+    assert "only_lib" not in capsys.readouterr().out
+    manifest = [*project, "--manifest", "m.toml", "--out", "o", "--write"]
+    assert main(manifest) == 0
+    captured = capsys.readouterr()
+    assert "note: skipped bot: ~~/src/HOL/Orderings.thy needs ISABELLE_HOME" in captured.err
+    assert captured.out == "wrote o/only_lib.thy\n"
+    monkeypatch.setenv("ISABELLE_HOME", str(base / "home"))
+    assert main([*manifest, "--statement"]) == 0
+    assert (base / "o/bot.thy").read_text() == (
+        "(* ~~/src/HOL/Orderings.thy *)\nclass bot = fixes bot :: 'a\n"
+    )
+    (base / "m.toml").write_text('[snippets.x]\nname = "gone"\nfile = "~~/src/HOL/X.thy"\n')
+    assert main(manifest) == 1
+    assert capsys.readouterr().err == (
+        "isar project extract: gone: no declaration in ~~/src/HOL/X.thy\n"
+    )
+
+
+def test_manifest_name_and_proof(project: Path) -> None:
+    (project / "m.toml").write_text(
+        '[snippets.short]\nname = "A.succ_pos"\n'
+        '[snippets.long]\nname = "A.succ_pos"\nproof = true\n'
+        '[snippets.plain]\nname = "l.succ_pos"\nproof = false\n'
+    )
+    assert main([*EXTRACT, "--manifest", "m.toml", "--out", "o", "--write", "--statement"]) == 0
+    assert (project / "o/short.thy").read_text() == '(* A.thy *)\nlemma succ_pos: "succ n > 0"\n'
+    assert (project / "o/long.thy").read_text().endswith("unfolding succ_def by simp\n")
+    assert (project / "o/plain.thy").read_text().endswith('"succ x > 0"\n')
+    # `proof = false` holds without --statement too.
+    assert main([*EXTRACT, "--manifest", "m.toml", "--out", "o", "--check"]) == 1
+
+
 @pytest.mark.parametrize(
     ("args", "message"),
     [
@@ -193,3 +283,74 @@ def test_names_derived_interpretation(
     assert main([*NAMES, "--derived", "--name", "I.q.a", "--format", "json"]) == 0
     (row,) = json.loads(capsys.readouterr().out)["names"]
     assert (row["command"], row["derived_from"], row["line"]) == ("interpretation", "L.l.a", 2)
+
+
+def test_names_of_files(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "p/ROOT": "session P = HOL + theories A B",
+            "p/A.thy": 'theory A imports Main begin\nlemma a: "True" by simp\nend\n',
+            "p/B.thy": 'theory B imports Main begin\nlocale l = assumes b: "True"\nend\n',
+            "p/I.thy": "theory I imports B begin\ninterpretation q: l by simp\nend\n",
+            "alone/C.thy": 'theory C imports Main begin\ndefinition c :: nat where "c = 0"\nend\n',
+            "alone/notes.txt": "",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "p/A.thy", "alone/C.thy", "p/A.thy", "--format", "json"]) == 0
+    rows = [(r["name"], r["session"]) for r in json.loads(capsys.readouterr().out)["names"]]
+    assert rows == [("A.a", "P"), ("C.c", "")]
+    # A file no session lists still has its interpretations' facts.
+    assert main([*NAMES, "p/B.thy", "p/I.thy", "--derived", "--name", "I.q.b"]) == 0
+    capsys.readouterr()
+    assert main([*NAMES, "alone/notes.txt"]) == 2
+    assert "notes.txt: not a directory or .thy file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("fmt", ["text", "json"])
+def test_instances_view(
+    make_project: MakeProject,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    golden: Golden,
+    fmt: str,
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": "theory T imports Main begin\n"
+            "instantiation sign :: numeric_domain begin\ninstance by simp\nend\n"
+            "global_interpretation sign_tf: mono_ops sign_ops\n  by simp\n"
+            "interpretation loc 2 by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["project", "instances", "--format", fmt]) == 0
+    golden(f"extract/instances.{'txt' if fmt == 'text' else fmt}", capsys.readouterr().out)
+
+
+def test_names_statements(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*NAMES, "--statements", "--derived", "--format", "json"]) == 0
+    rows = {r["name"]: r["statement"] for r in json.loads(capsys.readouterr().out)["names"]}
+    assert rows["A.succ_pos"] == 'lemma succ_pos: "succ n > 0"\n'
+    assert rows["B.l"] == "locale l = fixes x :: nat\n"
+    assert rows["A.succ_def"] == ""  # derived
+    assert main([*NAMES, "--statements"]) == 2
+    assert "--statements needs --format json or csv" in capsys.readouterr().err
+
+
+def test_names_statements_of_interpretation_facts(
+    make_project: MakeProject, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories L I",
+            "L.thy": 'theory L imports Main begin\nlocale l = assumes a: "True"\nend\n',
+            "I.thy": "theory I imports L begin\ninterpretation q: l by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "--derived", "--statements", "--name", "I.q.a", "--format", "csv"]) == 0
+    assert capsys.readouterr().out.splitlines()[1].endswith(",")  # no statement

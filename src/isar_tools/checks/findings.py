@@ -26,6 +26,7 @@ CODES: dict[str, tuple[str, str]] = {
     "duplicate-session": ("project", "two sessions have the same name"),
     "missing-theory": ("project", "a theories entry names no existing theory"),
     "missing-directory": ("project", "a session or directories entry names no directory"),
+    "theory-path": ("project", "a theories entry is a path, which Isabelle does not load"),
     "missing-document-file": ("project", "a document_files entry names no file"),
     "duplicate-theory-name": (
         "project",

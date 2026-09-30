@@ -47,6 +47,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
 | `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
 | `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project instances`                 | Class instances and locale interpretations, with their class or locale                     |
 | `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
 | `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
 | `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
@@ -97,16 +98,16 @@ isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
 
-| Group       | Codes                                                                                                                                           |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`   | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
-| `proofs`    | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                              |
-| `syntax`    | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                             |
-| `symbols`   | `non-ascii` (opt-in)                                                                                                                            |
-| `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                             |
-| `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                      |
-| `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                         |
-| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                          |
+| Group       | Codes                                                                                                                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`   | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
+| `proofs`    | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                                             |
+| `syntax`    | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            |
+| `symbols`   | `non-ascii` (opt-in)                                                                                                                                           |
+| `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
+| `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
+| `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
+| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
@@ -142,33 +143,56 @@ isar project names --kind locale                  # every locale, as Theory.loca
 isar project names --format markdown > NAMES.md   # an index with docstrings
 isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
 isar project names --derived                      # also f_def, f.simps, L.intro, q.fact
+isar project names "$ISABELLE_HOME/src/HOL/Orderings.thy"   # one theory file alone
+isar project names --kind fact --statements --format json   # each lemma's statement
 ```
 
 Names are qualified as Isabelle renders them: a lemma inside `context loc` is
-`Theory.loc.name`. With `--name`, a qualifier naming the wrong scope does not
-match, and the error suggests the names that exist, so links into rendered
-theories can be checked without building them. The docstring is a `text` block
+`Theory.loc.name`, and a datatype's constructors and selectors and a record's
+fields are named in their type (`Theory.t.C`). With `--name`, a qualifier
+naming the wrong scope does not match, and the error suggests the names that
+exist, so links into rendered theories can be checked without building them.
+JSON and CSV rows carry a constant's `mixfix`, its `notation` (the first string
+of the mixfix), and the syntax `mode` of `abbreviation (input)`, for constants,
+record fields, constructors, and locale parameters, `for` clause included. The docstring is a `text` block
 directly before the declaration.
 
 ### Quoting declarations
 
 ```sh
 isar project extract combine_env locale_name.lemma_name
+isar project extract --statement lemma_name     # without the proof
+isar project extract "sign :: numeric_domain" sign_tf   # an instance, an interpretation
 isar project extract --manifest snippets.toml --out generated/ --write   # regenerate
 isar project extract --manifest snippets.toml --out generated/ --check   # diff; exit 1 on drift
 ```
 
-A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and
-must identify one declaration; its source is the command and, for a goal, its
-proof. A manifest lists names as TOML tables, so a document that quotes a
-definition fails its check when the definition changes or is renamed:
+A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, a
+class instance `type :: class`, or the qualifier of an interpretation
+(`q` for `interpretation q: loc`), and must identify one declaration. The
+project's declarations come first, then those of `-d` directories; a
+declaration hides the parameters, fields, and constructors that others have of
+the same name; its source is the command and, for a goal, its
+proof. With `--statement` it is the statement alone: no proof, and no `begin` of
+a locale, class, or instantiation. A manifest lists snippets as TOML tables,
+each written to `KEY.thy`, so a document that quotes a definition fails its
+check when the definition changes or is renamed:
 
 ```toml
 [snippets.combine_env]
 why = "shown in chapter 3"     # free text, ignored
 [snippets.succ_pos]
 file = "src/B.thy"             # choose between declarations of the same name
+proof = true                   # keep the proof, also with --statement
+[snippets.succ_pos_short]
+name = "B.succ_pos"            # what to extract, if not the key
+[snippets.order]
+file = "~~/src/HOL/Orderings.thy"   # Isabelle's own theories, below $ISABELLE_HOME
 ```
+
+A `~~/` file is read below the `ISABELLE_HOME` environment variable and printed
+back as `(* ~~/src/HOL/Orderings.thy *)`; without the variable, such entries are
+skipped with a note.
 
 ### Statistics
 
