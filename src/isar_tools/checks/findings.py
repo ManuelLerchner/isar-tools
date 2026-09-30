@@ -60,6 +60,8 @@ CODES: dict[str, tuple[str, str]] = {
     "counterexample-search": ("leftovers", "nitpick, quickcheck, or refute without expect"),
     "diagnostic-command": ("leftovers", "a diagnostic command (thm, print_*, find_theorems, ...)"),
     "retired-identifier": ("retired", "an identifier the project lists as removed comes back"),
+    "prose-reference": ("prose", "a plain cartouche in document text names no declaration"),
+    "prose-underscore": ("prose", "a raw _ in document text, which LaTeX rejects"),
 }
 
 GROUPS = (
@@ -72,5 +74,6 @@ GROUPS = (
     "hygiene",
     "leftovers",
     "retired",
+    "prose",
 )
 DEFAULT_GROUPS = ("project", "proofs", "syntax")
