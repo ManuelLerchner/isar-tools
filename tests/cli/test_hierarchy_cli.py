@@ -90,3 +90,22 @@ def test_without_include_parents_are_unresolved(
     data = json.loads(capsys.readouterr().out)
     assert [d["name"] for d in data["declarations"]] == ["evaluator", "mono_evaluator"]
     assert data["unresolved"] == []
+
+
+def test_for_parameters(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": 'theory T imports Main begin\nlocale l = base f for f ("ctx\\<^sup>#")\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["project", "hierarchy"]) == 0
+    assert '  for     f  ("ctx\\<^sup>#")\n' in capsys.readouterr().out
+    assert main(["project", "hierarchy", "--format", "json"]) == 0
+    (decl,) = json.loads(capsys.readouterr().out)["declarations"]
+    assert decl["for_fixes"] == [
+        {"name": "f", "type": "", "mixfix": '"ctx\\<^sup>#"', "notation": "ctx\\<^sup>#"}
+    ]

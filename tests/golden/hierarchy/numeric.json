@@ -19,6 +19,7 @@
           "notation": "\\<sqinter>"
         }
       ],
+      "for_fixes": [],
       "assumes": []
     },
     {
@@ -42,6 +43,7 @@
           "notation": "\\<gamma>"
         }
       ],
+      "for_fixes": [],
       "assumes": [
         {
           "name": "gamma_mono",

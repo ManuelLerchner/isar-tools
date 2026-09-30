@@ -389,10 +389,12 @@ def run_hierarchy(args: argparse.Namespace) -> int:
                 print(f"  extends {' + '.join(decl.parents)}")
             if decl.sorts:
                 print(f"  sorts   {', '.join(decl.sorts)}")
-            for p in decl.fixes:
+            for keyword, p in [("fixes", p) for p in decl.fixes] + [
+                ("for", p) for p in decl.for_fixes
+            ]:
                 notation = f"  ({p.mixfix})" if p.mixfix else ""
                 typed = f" :: {p.type}" if p.type else ""
-                print(f"  fixes   {p.name}{typed}{notation}")
+                print(f"  {keyword:<7} {p.name}{typed}{notation}")
             for a in decl.assumes:
                 label = f"{a.name}: " if a.name else ""
                 print(f"  assumes {label}{' '.join(a.props)}")
@@ -710,6 +712,9 @@ def names_table(
                 "end_line": e.end_line,
                 "doc": e.doc,
                 "derived_from": e.derived_from,
+                "mixfix": e.mixfix,
+                "notation": e.notation,
+                "mode": e.mode,
             }
         )
     return Table(
@@ -725,6 +730,11 @@ def names_table(
             Column("end_line", "end", True),
             *([Column("derived_from", "from")] if derived else []),
             *([Column("doc", "doc")] if docs else []),
+            *(
+                [Column("mixfix", "mixfix"), Column("notation", "notation"), Column("mode", "mode")]
+                if docs
+                else []
+            ),
             *([Column("statement", "statement")] if statements else []),
         ],
         rows,

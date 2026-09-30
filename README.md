@@ -151,7 +151,10 @@ Names are qualified as Isabelle renders them: a lemma inside `context loc` is
 `Theory.loc.name`, and a datatype's constructors and selectors and a record's
 fields are named in their type (`Theory.t.C`). With `--name`, a qualifier
 naming the wrong scope does not match, and the error suggests the names that
-exist, so links into rendered theories can be checked without building them. The docstring is a `text` block
+exist, so links into rendered theories can be checked without building them.
+JSON and CSV rows carry a constant's `mixfix`, its `notation` (the first string
+of the mixfix), and the syntax `mode` of `abbreviation (input)`, for constants,
+record fields, constructors, and locale parameters, `for` clause included. The docstring is a `text` block
 directly before the declaration.
 
 ### Quoting declarations

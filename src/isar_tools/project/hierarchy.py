@@ -108,18 +108,24 @@ def _parents(expression: list[Token]) -> tuple[list[str], list[Token], list[Para
         if words and words[0].kind in (Kind.WORD, Kind.STRING):
             names.append(unquote(words[0]))
             terms += [t for t in words[1:] if t.kind in _TERM and t.text != "where"]
-    params = [p for entry in _split_top(expression[stop + 1 :], "and") for p in _fixes(entry)]
+    for_clause = _split_top(expression[stop + 1 :], "and")
+    params = [p for entry in for_clause for p in parse_fixes(entry)]
     return names, terms, params
 
 
-def _mixfix(group: list[Token]) -> tuple[str, str]:
+def parse_mixfix(group: list[Token]) -> tuple[str, str]:
+    """A mixfix annotation ``(...)``: its text, and its first string or
+    cartouche, the notation."""
     inner = group[1:-1]
-    text = " ".join(t.text for t in inner)
+    # As written, with each gap between tokens as one space: `[51, 51] 50`.
+    text = "".join(
+        (" " if i and t.start > inner[i - 1].end else "") + t.text for i, t in enumerate(inner)
+    )
     notation = next((unquote(t) for t in inner if t.kind in _TEXT), "")
     return text, notation
 
 
-def _bracket_group(toks: list[Token], i: int) -> tuple[list[Token], int]:
+def bracket_group(toks: list[Token], i: int) -> tuple[list[Token], int]:
     """The balanced group starting at ``toks[i]`` and the index after it."""
     depth = 0
     j = i
@@ -131,8 +137,9 @@ def _bracket_group(toks: list[Token], i: int) -> tuple[list[Token], int]:
     return toks[i:j], j
 
 
-def _fixes(entry: list[Token]) -> Iterator[Parameter]:
-    """``x y :: T (mixfix)``: one parameter per name."""
+def parse_fixes(entry: list[Token]) -> Iterator[Parameter]:
+    """``x y :: T (mixfix)``: one parameter per name. Also reads the name, type,
+    and mixfix of a constant (``definition f :: T (mixfix)``)."""
     names: list[str] = []
     type_ = ""
     mixfix = notation = ""
@@ -144,8 +151,8 @@ def _fixes(entry: list[Token]) -> Iterator[Parameter]:
         type_ = unquote(entry[i + 1]) if i + 1 < len(entry) else ""
         i += 2
     if i < len(entry) and entry[i].text == "(":
-        group, i = _bracket_group(entry, i)
-        mixfix, notation = _mixfix(group)
+        group, i = bracket_group(entry, i)
+        mixfix, notation = parse_mixfix(group)
     for name in names:
         yield Parameter(name, type_, mixfix, notation)
 
@@ -158,11 +165,11 @@ def _assumes(entry: list[Token]) -> tuple[Assumption, list[Token]]:
     if entry and entry[0].kind is Kind.WORD:
         j = 1
         if j < len(entry) and entry[j].text == "[":
-            _, j = _bracket_group(entry, j)
+            _, j = bracket_group(entry, j)
         if j < len(entry) and entry[j].text == ":":
             name, i = entry[0].text, j + 1
     elif entry and entry[0].text == "[":
-        _, j = _bracket_group(entry, 0)
+        _, j = bracket_group(entry, 0)
         i = j + 1 if j < len(entry) and entry[j].text == ":" else 0
     props = tuple(unquote(t) for t in entry[i:] if t.kind in _TEXT)
     depth = 0
@@ -182,7 +189,7 @@ def _elements(decl: Declaration, body: list[Token]) -> None:
         if tok is None or (tok.kind is Kind.WORD and tok.text in _ELEMENTS):
             for entry in _split_top(part, "and") if element else ():
                 if element == "fixes":
-                    decl.fixes += _fixes(entry)
+                    decl.fixes += parse_fixes(entry)
                 elif element in ("assumes", "defines"):
                     assumption, terms = _assumes(entry)
                     (decl.assumes if element == "assumes" else decl.defines).append(assumption)
@@ -311,6 +318,13 @@ def closure(
     return ordered, list(missing)
 
 
+def _parameters_json(parameters: list[Parameter]) -> list[dict[str, str]]:
+    return [
+        {"name": p.name, "type": p.type, "mixfix": p.mixfix, "notation": p.notation}
+        for p in parameters
+    ]
+
+
 def as_json(located: Located, display: str) -> dict[str, object]:
     decl = located.decl
     return {
@@ -322,9 +336,7 @@ def as_json(located: Located, display: str) -> dict[str, object]:
         "line": decl.line,
         "parents": decl.parents,
         "sorts": decl.sorts,
-        "fixes": [
-            {"name": p.name, "type": p.type, "mixfix": p.mixfix, "notation": p.notation}
-            for p in decl.fixes
-        ],
+        "fixes": _parameters_json(decl.fixes),
+        "for_fixes": _parameters_json(decl.for_fixes),
         "assumes": [{"name": a.name, "props": list(a.props)} for a in decl.assumes],
     }

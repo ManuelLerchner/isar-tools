@@ -22,6 +22,11 @@
   its class or locale, and the locale's arguments.
 - `isar project names --statements` (JSON and CSV): a `statement` column with each
   declaration's statement as `extract --statement` prints it, for every lemma in one call.
+- `isar project names` JSON and CSV: `mixfix`, `notation`, and `mode` (`input` for
+  `abbreviation (input)`) of constants, record fields, constructors, and locale
+  parameters. The parameters of a locale's `for` clause are listed as constants of the
+  locale (command `for`), and `hierarchy --format json` has them as `for_fixes`. A
+  mixfix keeps its spacing as written (`[51, 51] 50`, was `[ 51 , 51 ] 50`).
 
 ## 0.2.0 (2026-09-27)
 

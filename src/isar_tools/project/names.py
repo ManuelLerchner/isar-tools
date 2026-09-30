@@ -22,9 +22,16 @@ by interpretations are listed only on request (``derived``).
 import textwrap
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 
-from isar_tools.project.hierarchy import parse_declaration
+from isar_tools.project.hierarchy import (
+    Parameter,
+    bracket_group,
+    parse_declaration,
+    parse_fixes,
+    parse_mixfix,
+)
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import Kind, Token
 from isar_tools.source.theory import Command, Theory, significant, unquote
@@ -123,6 +130,9 @@ class Entity:
     # Declared as part of another declaration: a parameter or assumption of a
     # locale, a record field, a datatype constructor or selector.
     member: bool = False
+    mixfix: str = ""  # the text inside a constant's mixfix annotation; "" if none
+    notation: str = ""  # the first string or cartouche of the mixfix; "" if none
+    mode: str = ""  # the syntax mode of `abbreviation (input)`: "input"; "" if none
 
     @property
     def qualified(self) -> str:
@@ -163,33 +173,41 @@ def _split_top(toks: list[Token], separator: str) -> list[list[Token]]:
     return [toks[a + 1 : b] for a, b in zip([-1, *cuts], [*cuts, len(toks)], strict=True)]
 
 
-def _typed(toks: list[Token]) -> list[str]:
-    """Names declared as ``f :: T`` outside brackets, as in ``consts`` and in
-    the body of a record."""
-    return [t.text for i, t in _top(toks) if t.kind is Kind.WORD and _follows(toks, i) == "::"]
+def _typed(toks: list[Token]) -> list[Parameter]:
+    """Constants declared as ``f :: T (mixfix)``, one after another, as in
+    ``consts`` and in the body of a record."""
+    starts = [i for i, t in _top(toks) if t.kind is Kind.WORD and _follows(toks, i) == "::"]
+    ends = [*starts[1:], len(toks)]
+    return [p for a, b in zip(starts, ends, strict=True) for p in parse_fixes(toks[a:b])]
+
+
+def _plain(name: str) -> Parameter:
+    return Parameter(name, "", "", "")
 
 
 def _follows(toks: list[Token], i: int) -> str:
     return toks[i + 1].text if i + 1 < len(toks) else ""
 
 
-def _names(command: str, toks: list[Token]) -> list[str]:
-    """Names bound by ``command`` from its arguments ``toks``."""
+def _names(command: str, toks: list[Token]) -> list[Parameter]:
+    """Names bound by ``command`` from its arguments ``toks``, with the type
+    and mixfix of a constant."""
     kind = KINDS[command]
     if kind == "fact":
         if not toks or toks[0].kind not in (Kind.WORD, Kind.STRING) or toks[0].text in _ELEMENTS:
             return []
         follow = toks[1].text if len(toks) > 1 else ""
         if command in ("lemmas", "theorems", "named_theorems") or follow in (":", "[", "="):
-            return [unquote(toks[0])]
+            return [_plain(unquote(toks[0]))]
         return []
     if kind in ("locale", "class", "bundle"):
-        return [unquote(toks[0])] if toks and toks[0].kind in (Kind.WORD, Kind.STRING) else []
+        named = toks and toks[0].kind in (Kind.WORD, Kind.STRING)
+        return [_plain(unquote(toks[0]))] if named else []
     if command == "consts":  # `consts f :: T g :: U`, without `and`
         return _typed(toks)
     # Parameters (`for r`) and specifications (`where`) follow the names.
     stop = next((j for j, t in enumerate(toks) if t.text in ("where", "for")), len(toks))
-    names: list[str] = []
+    names: list[Parameter] = []
     for part in _split_top(toks[:stop] if kind == "constant" else toks, "and"):
         i = 0
         while i < len(part) and (
@@ -201,7 +219,7 @@ def _names(command: str, toks: list[Token]) -> list[str]:
         follow = part[i + 1].text if i + 1 < len(part) else ""
         if follow in (":", "["):  # a fact name: `definition f_def: "f = ..."`
             continue
-        names.append(part[i].text)
+        names += parse_fixes(part[i:]) if kind == "constant" else [_plain(part[i].text)]
     return names
 
 
@@ -231,16 +249,16 @@ _INTERPRETATIONS = frozenset({"interpretation", "global_interpretation"})
 _DATATYPES = frozenset({"datatype", "codatatype"})
 
 
-def _record_fields(args: list[Token]) -> list[str]:
+def _record_fields(args: list[Token]) -> list[Parameter]:
     """Fields of ``record 'a r = parent + f :: T g :: U``."""
     eq = next((i for i, t in enumerate(args) if t.text == "="), None)
     return _typed(args[eq + 1 :]) if eq is not None else []
 
 
-def _constructors(args: list[Token]) -> Iterator[tuple[str, str]]:
-    """``(type, name)`` for the constructors of ``datatype t = is_A: A (sel: T)
-    | B and u = C``, their discriminators (``is_A``), and their selectors
-    (``sel``)."""
+def _constructors(args: list[Token]) -> Iterator[tuple[str, Parameter]]:
+    """``(type, constant)`` for the constructors of ``datatype t = is_A: A
+    (sel: T) | B (mixfix) and u = C``, their discriminators (``is_A``), and
+    their selectors (``sel``)."""
     stop = next((i for i, t in _top(args) if t.text in ("where", "for")), len(args))
     for part in _split_top(args[:stop], "and"):
         eq = next((i for i, t in _top(part) if t.text == "="), len(part))
@@ -248,17 +266,26 @@ def _constructors(args: list[Token]) -> Iterator[tuple[str, str]]:
         head = [t for _, t in _top(part[:eq]) if not t.text.startswith("'")]
         if not head or head[-1].kind is not Kind.WORD:
             continue
-        found: dict[str, None] = {}
+        found: dict[str, Parameter] = {}
         for alt in _split_top(part[eq + 1 :], "|"):
             if len(alt) > 2 and alt[1].text == ":":  # a discriminator
-                found.setdefault(alt[0].text)
+                found.setdefault(alt[0].text, _plain(alt[0].text))
                 alt = alt[2:]
-            if alt and alt[0].kind is Kind.WORD:
-                found.setdefault(alt[0].text)
-            for i in range(len(alt) - 2):
-                if alt[i].text == "(" and alt[i + 1].kind is Kind.WORD and alt[i + 2].text == ":":
-                    found.setdefault(alt[i + 1].text)
-        yield from ((head[-1].text, name) for name in found)
+            if not alt or alt[0].kind is not Kind.WORD:
+                continue
+            constructor = alt[0].text
+            found.setdefault(constructor, _plain(constructor))
+            i = 1
+            while i < len(alt):
+                if alt[i].text != "(":
+                    i += 1
+                    continue
+                group, i = bracket_group(alt, i)
+                if len(group) > 3 and group[1].kind is Kind.WORD and group[2].text == ":":
+                    found.setdefault(group[1].text, _plain(group[1].text))  # a selector
+                else:  # arguments are types, never in brackets: the mixfix
+                    found[constructor] = Parameter(constructor, "", *parse_mixfix(group))
+        yield from ((head[-1].text, constant) for constant in found.values())
 
 
 def _rule_names(args: list[Token]) -> list[str]:
@@ -372,7 +399,9 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
             target, j = _target(args)
             scope = target or enclosing
             start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
-            for bound in _names(command.name, args[j:]):
+            mode = _mode(command.name, args[j:])
+            for declared in _names(command.name, args[j:]):
+                bound = declared.name
                 entity = Entity(
                     name=bound,
                     kind=KINDS[command.name],
@@ -386,65 +415,81 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                     end=end,
                     doc=_doc(theory, commands[i - 1] if i else None),
                     statement_end=statement_end,
+                    mixfix=declared.mixfix,
+                    notation=declared.notation,
+                    mode=mode,
                 )
                 yield entity
-                # Parameters (`fixes`) are constants of the locale, and named
+                member = partial(replace, entity, doc="", member=True, mode="")
+                # Parameters (`fixes`, and the `for` clause of the parent
+                # expression) are constants of the locale, and named
                 # assumptions its facts; a class's are named in its `_class`
                 # locale: `c_class.op`.
                 if command.name in ("locale", "class"):
                     declaration = parse_declaration(theory, command, path)
                     local = bound if command.name == "locale" else f"{bound}_class"
-                    for parameter in declaration.fixes if declaration else []:
-                        yield replace(
-                            entity,
-                            name=parameter.name,
+                    fixes = declaration.fixes if declaration else []
+                    for_fixes = declaration.for_fixes if declaration else []
+                    parameters = [("fixes", p) for p in fixes] + [("for", p) for p in for_fixes]
+                    for keyword, p in parameters:
+                        yield member(
+                            name=p.name,
                             kind="constant",
-                            command="fixes",
+                            command=keyword,
                             scope=local,
-                            doc="",
-                            member=True,
+                            mixfix=p.mixfix,
+                            notation=p.notation,
                         )
-                    # Named assumptions are facts of the locale.
                     for assumption in declaration.assumes if declaration else []:
                         if assumption.name:
-                            yield replace(
-                                entity,
+                            yield member(
                                 name=assumption.name,
                                 kind="fact",
                                 command="assumes",
                                 scope=local,
-                                doc="",
-                                member=True,
+                                mixfix="",
+                                notation="",
                             )
                 # Record fields are constants named in the record: `r.field`.
                 if command.name == "record":
-                    for field_name in _record_fields(args[j:]):
-                        yield replace(
-                            entity,
-                            name=field_name,
+                    for field in _record_fields(args[j:]):
+                        yield member(
+                            name=field.name,
                             kind="constant",
-                            command="record",
                             scope=bound,
-                            doc="",
-                            member=True,
+                            mixfix=field.mixfix,
+                            notation=field.notation,
                         )
                 # Constructors, discriminators, and selectors: `t.C`.
                 if command.name in _DATATYPES:
                     for type_name, constant in _constructors(args[j:]):
                         if type_name == bound:
-                            yield replace(
-                                entity,
-                                name=constant,
+                            yield member(
+                                name=constant.name,
                                 kind="constant",
                                 scope=bound,
-                                doc="",
-                                member=True,
+                                mixfix=constant.mixfix,
+                                notation=constant.notation,
                             )
                 if derived:
                     for fact in _derived(command.name, bound, args[j:]):
                         yield replace(
-                            entity, name=fact, kind="fact", doc="", derived_from=entity.qualified
+                            entity,
+                            name=fact,
+                            kind="fact",
+                            doc="",
+                            derived_from=entity.qualified,
+                            mixfix="",
+                            notation="",
+                            mode="",
                         )
+
+
+def _mode(command: str, args: list[Token]) -> str:
+    """The syntax mode of ``abbreviation (input)`` or ``(output)``; "" if none."""
+    if command == "abbreviation" and len(args) > 2 and args[0].text == "(" and args[2].text == ")":
+        return args[1].text
+    return ""
 
 
 def _walk(theory: Theory) -> Iterator[tuple[int, Command, list[Token], str]]:

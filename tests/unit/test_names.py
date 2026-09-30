@@ -308,3 +308,36 @@ def test_instances() -> None:
     assert source(theory, first, statement=True) == "instantiation sign :: numeric_domain\n"
     tf = next(i.entity for i in instances(theory, "I", P) if i.entity.name == "sign_tf")
     assert source(theory, tf, statement=True).endswith('rewrites "x = y"\n')
+
+
+def test_mixfix_and_mode() -> None:
+    theory = parse_theory(
+        r"""theory M imports Main begin
+definition sup' :: "nat \<Rightarrow> nat" (infixl "\<squnion>" 65) where "sup' = max"
+abbreviation (input) le (\<open>_ \<preceq> _\<close>) where "le \<equiv> (\<le>)"
+consts gamma_S :: "'s \<Rightarrow> nat set" ("\<lbrakk>_\<rbrakk>")
+inductive cstep :: "nat \<Rightarrow> bool" ("\<turnstile> _" [51] 50) for g where "cstep 0"
+record point = px :: nat ("x\<^sub>p")
+datatype 'a seq = Nil ("[]") | Cons (hd: 'a) "'a seq" (infixr "#" 65)
+locale ctx = base f for f (infixl "\<cdot>" 70) + fixes z :: nat ("\<zero>")
+end"""
+    )
+    found = {
+        e.qualified: (e.command, e.mixfix, e.notation, e.mode) for e in entities(theory, "M", P)
+    }
+    assert found["M.sup'"] == ("definition", 'infixl "\\<squnion>" 65', "\\<squnion>", "")
+    assert found["M.le"] == (
+        "abbreviation",
+        "\\<open>_ \\<preceq> _\\<close>",
+        "_ \\<preceq> _",
+        "input",
+    )
+    assert found["M.gamma_S"] == ("consts", '"\\<lbrakk>_\\<rbrakk>"', "\\<lbrakk>_\\<rbrakk>", "")
+    assert found["M.cstep"][1:3] == ('"\\<turnstile> _" [51] 50', "\\<turnstile> _")
+    assert found["M.point.px"] == ("record", '"x\\<^sub>p"', "x\\<^sub>p", "")
+    assert found["M.seq.Nil"][2] == "[]"
+    assert found["M.seq.Cons"][2] == "#"
+    assert found["M.seq.hd"][1] == ""
+    assert found["M.ctx.f"] == ("for", 'infixl "\\<cdot>" 70', "\\<cdot>", "")
+    assert found["M.ctx.z"] == ("fixes", '"\\<zero>"', "\\<zero>", "")
+    assert list(found)[list(found).index("M.seq") + 1] == "M.seq.Nil"
