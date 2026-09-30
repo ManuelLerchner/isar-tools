@@ -694,11 +694,13 @@ def _named(paths: list[Path], include: list[Path], derived: bool) -> list[_Found
     the theory files among them, each file read with the project it is in."""
     found: list[_Found] = []
     interps: list[_Interpretation] = []
+    projects: dict[Path, Project] = {}
     for path in paths:
         if path.is_dir():
             found += _entities(_load_dir(path, include), derived)
         elif path.is_file() and path.suffix == ".thy":
-            project = Project.load(project_root(path), include)
+            root = project_root(path)
+            project = projects.get(root) or projects.setdefault(root, Project.load(root, include))
             session = project.session_of(path)
             name = session.name if session is not None else ""
             more, made = _theory_entities(project, path.resolve(), derived, False, name, False)
