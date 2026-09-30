@@ -45,7 +45,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | `isar check [GROUP] [PATH...]`           | Report problems in ROOT files, proofs, syntax, symbols, docs, and locales                  |
 | `isar stats [VIEW] [PATH...]`            | Size, proof, and command statistics                                                        |
 | `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
-| `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph                                 |
+| `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph; session layers                 |
 | `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
 | `isar project instances`                 | Class instances and locale interpretations, with their class or locale                     |
 | `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
@@ -168,6 +168,19 @@ directory with `-d`, as with `isabelle build -d`:
 isar check -d ~/afp/thys .
 isar project hierarchy --root numeric_domain -d ~/afp/thys --format json
 ```
+
+### Session layers
+
+```sh
+isar project graph --layers                  # layer, session, and what it rests on
+isar project graph --layers --format dot     # one rank per layer
+```
+
+A session rests on its parent, its `sessions` entries, and the sessions whose
+theories its theories import. Its layer is one above the highest of those
+(1 if it rests on no known session), so a drawing of the development as strata
+follows the ROOT files and imports. Sessions of `-d` directories that the
+project rests on are included; JSON adds `layers` and the `imports` edges.
 
 ### Names
 

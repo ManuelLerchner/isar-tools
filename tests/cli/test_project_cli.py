@@ -33,6 +33,8 @@ def project(make_project: MakeProject, monkeypatch: pytest.MonkeyPatch) -> Path:
         (["project", "graph", "--format", "dot"], "graph.dot"),
         (["project", "graph", "--theories", "--format", "dot"], "theories.dot"),
         (["project", "graph", "--theories"], "theories_graph.txt"),
+        (["project", "graph", "--layers"], "layers.txt"),
+        (["project", "graph", "--layers", "--format", "dot"], "layers.dot"),
     ],
 )
 def test_views(
@@ -58,3 +60,24 @@ def test_graph_json(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_not_a_directory(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["project", "sessions", "core/A.thy"]) == 2
     assert capsys.readouterr().err == "isar project: core/A.thy: not a directory\n"
+
+
+def test_layers_json(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (project / "app/D.thy").write_text('theory D imports "Core.B" "App-Main.C" begin end')
+    (project / "app/ROOT").write_text(
+        'session "App-Main" = Core + theories C\nsession Again = HOL + theories D\n'
+        "session Bare = theories C"
+    )
+    assert main(["project", "graph", "--layers", "--format", "json"]) == 0
+    graph = json.loads(capsys.readouterr().out)
+    assert graph["layers"] == {"Core": 1, "App-Main": 2, "Bare": 2, "Again": 3}
+    assert {"from": "Again", "to": "Core", "kind": "imports"} in graph["edges"]
+    assert {"from": "Again", "to": "Bare", "kind": "imports"}  # Bare owns C in graph["edges"]
+
+
+def test_layers_of_theories(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["project", "graph", "--layers", "--theories"]) == 2
+    assert "--layers is a view of sessions" in capsys.readouterr().err
+    (project / "empty").mkdir()
+    assert main(["project", "graph", "--layers", "empty"]) == 0
+    assert capsys.readouterr().out == ""

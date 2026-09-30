@@ -45,6 +45,10 @@
   theories. With `--browser-info DIR` (and `--link-base URL`), the page and anchor must
   exist (`broken-link`, `broken-anchor`); without a build, an anchor must spell the name
   with the scope the theory declares it in (`anchor-name`).
+- `isar project graph --layers`: sessions in strata, each one layer above the highest
+  session it rests on (parent, `sessions` entries, sessions its theories import),
+  including the `-d` sessions the project rests on. Text lists what each session rests
+  on, JSON adds `layers` and `imports` edges, DOT puts each layer in one rank.
 
 ## 0.2.0 (2026-09-27)
 
