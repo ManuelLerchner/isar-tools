@@ -125,6 +125,53 @@ def test_instances_by_name(
     assert json.loads(capsys.readouterr().out)[0]["kind"] == "instance"
 
 
+def test_outside_the_project(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "p/ROOT": "session P = L + theories A",
+            "p/A.thy": 'theory A imports L.B begin\nlemma shared: "True" by simp\nend\n',
+            "lib/ROOT": "session L = HOL + theories B",
+            "lib/B.thy": "theory B imports Main begin\n"
+            'lemma shared: "True" by simp\nlemma only_lib: "True" by simp\n'
+            "locale ordering_top = fixes top :: 'a\nclass top = fixes top :: 'a\nend\n",
+            "home/src/HOL/Orderings.thy": "theory Orderings imports Main begin\n"
+            "class bot = fixes bot :: 'a\nbegin\nend\nend\n",
+            "m.toml": '[snippets.bot]\nfile = "~~/src/HOL/Orderings.thy"\n[snippets.only_lib]\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    monkeypatch.delenv("ISABELLE_HOME", raising=False)
+    project = [*EXTRACT, "--project", "p", "-d", "lib"]
+    # A -d session counts when the project has no declaration of the name.
+    assert main([*project, "only_lib", "shared", "--statement"]) == 0
+    assert capsys.readouterr().out == (
+        '(* lib/B.thy *)\nlemma only_lib: "True"\n\n(* p/A.thy *)\nlemma shared: "True"\n'
+    )
+    # A class wins over a parameter of the same name, its own or a locale's.
+    assert main([*project, "top", "--statement"]) == 0
+    assert capsys.readouterr().out == "(* lib/B.thy *)\nclass top = fixes top :: 'a\n"
+    # names lists the project's declarations only.
+    assert main([*NAMES, "p", "-d", "lib", "--format", "csv"]) == 0
+    assert "only_lib" not in capsys.readouterr().out
+    manifest = [*project, "--manifest", "m.toml", "--out", "o", "--write"]
+    assert main(manifest) == 0
+    captured = capsys.readouterr()
+    assert "note: skipped bot: ~~/src/HOL/Orderings.thy needs ISABELLE_HOME" in captured.err
+    assert captured.out == "wrote o/only_lib.thy\n"
+    monkeypatch.setenv("ISABELLE_HOME", str(base / "home"))
+    assert main([*manifest, "--statement"]) == 0
+    assert (base / "o/bot.thy").read_text() == (
+        "(* ~~/src/HOL/Orderings.thy *)\nclass bot = fixes bot :: 'a\n"
+    )
+    (base / "m.toml").write_text('[snippets.x]\nname = "gone"\nfile = "~~/src/HOL/X.thy"\n')
+    assert main(manifest) == 1
+    assert capsys.readouterr().err == (
+        "isar project extract: gone: no declaration in ~~/src/HOL/X.thy\n"
+    )
+
+
 def test_manifest_name_and_proof(project: Path) -> None:
     (project / "m.toml").write_text(
         '[snippets.short]\nname = "A.succ_pos"\n'
@@ -236,3 +283,27 @@ def test_names_derived_interpretation(
     assert main([*NAMES, "--derived", "--name", "I.q.a", "--format", "json"]) == 0
     (row,) = json.loads(capsys.readouterr().out)["names"]
     assert (row["command"], row["derived_from"], row["line"]) == ("interpretation", "L.l.a", 2)
+
+
+def test_names_of_files(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "p/ROOT": "session P = HOL + theories A B",
+            "p/A.thy": 'theory A imports Main begin\nlemma a: "True" by simp\nend\n',
+            "p/B.thy": 'theory B imports Main begin\nlocale l = assumes b: "True"\nend\n',
+            "p/I.thy": "theory I imports B begin\ninterpretation q: l by simp\nend\n",
+            "alone/C.thy": 'theory C imports Main begin\ndefinition c :: nat where "c = 0"\nend\n',
+            "alone/notes.txt": "",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*NAMES, "p/A.thy", "alone/C.thy", "p/A.thy", "--format", "json"]) == 0
+    rows = [(r["name"], r["session"]) for r in json.loads(capsys.readouterr().out)["names"]]
+    assert rows == [("A.a", "P"), ("C.c", "")]
+    # A file no session lists still has its interpretations' facts.
+    assert main([*NAMES, "p/B.thy", "p/I.thy", "--derived", "--name", "I.q.b"]) == 0
+    capsys.readouterr()
+    assert main([*NAMES, "alone/notes.txt"]) == 2
+    assert "notes.txt: not a directory or .thy file" in capsys.readouterr().err

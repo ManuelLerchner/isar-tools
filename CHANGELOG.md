@@ -10,6 +10,13 @@
   `false` to override it, and `name` to extract something other than its key.
 - `isar project extract` finds class instances by `type :: class` and qualified
   interpretations by their qualifier.
+- `isar project extract` also finds declarations of `-d` directories when the project
+  has none of the name, and a manifest `file` may be `~~/src/HOL/...`, read below
+  `ISABELLE_HOME` (skipped with a note when it is unset) and printed back as `~~/`. A
+  declaration wins over parameters, fields, and constructors of the same name, so
+  `extract bot` gives HOL's `class bot`.
+- `isar project names FILE.thy ...` lists the declarations of those theory files only,
+  such as a few of HOL's without reading every HOL session.
 
 ## 0.2.0 (2026-09-27)
 

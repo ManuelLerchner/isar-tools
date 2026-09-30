@@ -120,6 +120,9 @@ class Entity:
     # Text offset after the statement: the declaring command without its proof
     # or the `begin` of the block it opens.
     statement_end: int = 0
+    # Declared as part of another declaration: a parameter or assumption of a
+    # locale, a record field, a datatype constructor or selector.
+    member: bool = False
 
     @property
     def qualified(self) -> str:
@@ -399,6 +402,7 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                             command="fixes",
                             scope=local,
                             doc="",
+                            member=True,
                         )
                     # Named assumptions are facts of the locale.
                     for assumption in declaration.assumes if declaration else []:
@@ -410,6 +414,7 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                                 command="assumes",
                                 scope=local,
                                 doc="",
+                                member=True,
                             )
                 # Record fields are constants named in the record: `r.field`.
                 if command.name == "record":
@@ -421,13 +426,19 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                             command="record",
                             scope=bound,
                             doc="",
+                            member=True,
                         )
                 # Constructors, discriminators, and selectors: `t.C`.
                 if command.name in _DATATYPES:
                     for type_name, constant in _constructors(args[j:]):
                         if type_name == bound:
                             yield replace(
-                                entity, name=constant, kind="constant", scope=bound, doc=""
+                                entity,
+                                name=constant,
+                                kind="constant",
+                                scope=bound,
+                                doc="",
+                                member=True,
                             )
                 if derived:
                     for fact in _derived(command.name, bound, args[j:]):

@@ -142,6 +142,7 @@ isar project names --kind locale                  # every locale, as Theory.loca
 isar project names --format markdown > NAMES.md   # an index with docstrings
 isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
 isar project names --derived                      # also f_def, f.simps, L.intro, q.fact
+isar project names "$ISABELLE_HOME/src/HOL/Orderings.thy"   # one theory file alone
 ```
 
 Names are qualified as Isabelle renders them: a lemma inside `context loc` is
@@ -163,7 +164,10 @@ isar project extract --manifest snippets.toml --out generated/ --check   # diff;
 
 A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, a
 class instance `type :: class`, or the qualifier of an interpretation
-(`q` for `interpretation q: loc`), and must identify one declaration; its source is the command and, for a goal, its
+(`q` for `interpretation q: loc`), and must identify one declaration. The
+project's declarations come first, then those of `-d` directories; a
+declaration hides the parameters, fields, and constructors that others have of
+the same name; its source is the command and, for a goal, its
 proof. With `--statement` it is the statement alone: no proof, and no `begin` of
 a locale, class, or instantiation. A manifest lists snippets as TOML tables,
 each written to `KEY.thy`, so a document that quotes a definition fails its
@@ -177,7 +181,13 @@ file = "src/B.thy"             # choose between declarations of the same name
 proof = true                   # keep the proof, also with --statement
 [snippets.succ_pos_short]
 name = "B.succ_pos"            # what to extract, if not the key
+[snippets.order]
+file = "~~/src/HOL/Orderings.thy"   # Isabelle's own theories, below $ISABELLE_HOME
 ```
+
+A `~~/` file is read below the `ISABELLE_HOME` environment variable and printed
+back as `(* ~~/src/HOL/Orderings.thy *)`; without the variable, such entries are
+skipped with a note.
 
 ### Statistics
 

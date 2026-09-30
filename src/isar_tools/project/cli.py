@@ -2,9 +2,11 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
@@ -22,7 +24,7 @@ from isar_tools.project.names import (
     matches,
     source,
 )
-from isar_tools.project.workspace import InputError, add_include_option
+from isar_tools.project.workspace import InputError, add_include_option, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
 from isar_tools.source.symbols import decode
@@ -79,9 +81,16 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "theories declare, with qualified names as Isabelle renders them "
         "(Theory.locale.name) and the text block directly before each as its docstring. "
         "--format markdown writes an index grouped by session and theory. With --name, "
-        "exit 1 if a name declares nothing, suggesting the qualified names that exist.",
+        "exit 1 if a name declares nothing, suggesting the qualified names that exist. "
+        "A theory file argument lists that file only, such as one of Isabelle's own.",
     )
-    names.add_argument("path", nargs="?", type=Path, default=Path(), help="project directory")
+    names.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        metavar="PATH",
+        help="project directory, or theory file to read alone (default: .)",
+    )
     names.add_argument(
         "--kind",
         action="append",
@@ -371,51 +380,111 @@ def run_hierarchy(args: argparse.Namespace) -> int:
     return 0
 
 
-# A declaration and its theory; None for a fact an interpretation makes.
-_Found = tuple[Entity, Theory | None]
+@dataclass(frozen=True)
+class _Found:
+    entity: Entity
+    theory: Theory | None  # None for a fact an interpretation makes
+    session: str  # "" for a theory of no known session
+    external: bool = False  # from a -d directory or a file outside every session
 
 
-def _entities(project: Project, derived: bool = False, named: bool = False) -> list[_Found]:
+_Interpretation = tuple[Interpretation, str]  # and the session of its theory
+
+
+def _theory_entities(
+    project: Project | None, path: Path, derived: bool, named: bool, session: str, external: bool
+) -> tuple[list[_Found], list[_Interpretation]]:
+    """The declarations of one theory file, and its qualified interpretations
+    if ``derived``. Without a ``project``, the file is read on its own."""
+    keywords = project.keywords_for(path) if project is not None else None
+    theory = parse_theory(read_source(path), keywords)
+    name = path.stem
+
+    def found(e: Entity) -> _Found:
+        return _Found(e, theory, session, external)
+
+    result = [found(e) for e in entities(theory, name, path, derived)]
+    if named:
+        result += [found(i.entity) for i in instances(theory, name, path) if i.entity.name]
+    interps = interpretations(theory, name, path) if derived else ()
+    return result, [(i, session) for i in interps]
+
+
+def _with_interpretations(found: list[_Found], interps: list[_Interpretation]) -> list[_Found]:
+    """``found`` and the facts ``interps`` make of its facts."""
+    facts = [f.entity for f in found]
+    return found + [_Found(e, None, s) for i, s in interps for e in interpreted(facts, i)]
+
+
+def _entities(
+    project: Project, derived: bool = False, named: bool = False, external: bool = False
+) -> list[_Found]:
     """Declarations of the project's theories. With ``derived``, also derived
     facts and those of qualified interpretations; with ``named``, also class
-    instances (``t :: c``) and qualified interpretations (by the qualifier)."""
+    instances (``t :: c``) and qualified interpretations (by the qualifier);
+    with ``external``, also the theories of -d directories."""
     found: list[_Found] = []
-    interps: list[Interpretation] = []
-    for session in project.own_sessions:
-        for name, path in project.owned_theories(session).items():
-            theory = parse_theory(read_source(path), project.keywords_for(path))
-            found += [(e, theory) for e in entities(theory, name, path, derived)]
-            if named:
-                heads = instances(theory, name, path)
-                found += [(i.entity, theory) for i in heads if i.entity.name]
-            if derived:
-                interps += interpretations(theory, name, path)
-    facts = [e for e, _ in found]
-    for interp in interps:
-        found += [(e, None) for e in interpreted(facts, interp)]
-    return found
+    interps: list[_Interpretation] = []
+    for session in project.sessions.values():
+        if session.external and not external:
+            continue
+        for path in project.owned_theories(session).values():
+            more, made = _theory_entities(
+                project, path, derived, named, session.name, session.external
+            )
+            found += more
+            interps += made
+    return _with_interpretations(found, interps)
 
 
 def _lookup(found: list[_Found], name: str, file: Path | None) -> _Found | str:
-    """The one declaration ``name`` refers to, or why there is none."""
+    """The one declaration ``name`` refers to, or why there is none. The
+    project's declarations hide those of -d directories, and a declaration
+    hides the parameters, fields, and constructors other declarations have of
+    the same name."""
     if "::" in name:  # an instance, spelt `t :: c`
         name = " :: ".join(part.strip() for part in name.split("::"))
-    hits = [f for f in found if matches(f[0], name)]
+    hits = [f for f in found if matches(f.entity, name)]
     if file is not None:
-        hits = [f for f in hits if f[0].path == file.resolve()]
+        hits = [f for f in hits if f.entity.path == file.resolve()]
+    hits = [f for f in hits if not f.external] or hits
+    # A declaration and its members, like a class and its parameter, are one source.
+    by_extent: dict[tuple[Path, int, int], _Found] = {}
+    for f in sorted(hits, key=lambda f: f.entity.member):
+        by_extent.setdefault((f.entity.path, f.entity.start, f.entity.end), f)
+    hits = list(by_extent.values())
+    hits = [f for f in hits if not f.entity.member] or hits
     if len(hits) == 1:
         return hits[0]
     if not hits:
-        return f"{name}: no declaration" + (f" in {file.as_posix()}" if file else "")
-    where = ", ".join(f"{e.qualified} ({display_path(e.path)}:{e.line})" for e, _ in hits)
+        return f"{name}: no declaration" + (f" in {_display(file)}" if file else "")
+    where = ", ".join(
+        f"{f.entity.qualified} ({_display(f.entity.path)}:{f.entity.line})" for f in hits
+    )
     return f"{name}: ambiguous: {where}"
 
 
 _Source = tuple[Entity, str]  # a declaration and the source text extracted
 
+# How Isabelle writes its own directory, ISABELLE_HOME.
+_ISABELLE_PREFIX = "~~/"
+
+
+def _isabelle_home() -> Path | None:
+    home = os.environ.get("ISABELLE_HOME")
+    return Path(home).resolve() if home else None
+
+
+def _display(path: Path) -> str:
+    """``path`` for a reader; below ISABELLE_HOME as ``~~/...``."""
+    home = _isabelle_home()
+    if home is not None and path.resolve().is_relative_to(home):
+        return _ISABELLE_PREFIX + path.resolve().relative_to(home).as_posix()
+    return display_path(path)
+
 
 def _snippet(entity: Entity, text: str) -> str:
-    return f"(* {display_path(entity.path)} *)\n{text}"
+    return f"(* {_display(entity.path)} *)\n{text}"
 
 
 @dataclass(frozen=True)
@@ -427,26 +496,51 @@ class _Wanted:
     proof: bool | None  # with or without its proof; None: as --statement says
 
 
-def _entry(key: str, meta: object, project: Path) -> _Wanted:
+def _entry(key: str, meta: object, project: Path) -> _Wanted | str:
+    """A manifest entry, or why it is skipped."""
     fields = cast(dict[str, object], meta) if isinstance(meta, dict) else {}
     name, file, proof = fields.get("name"), fields.get("file"), fields.get("proof")
+    path: Path | None = None
+    if isinstance(file, str) and file.startswith(_ISABELLE_PREFIX):
+        home = _isabelle_home()
+        if home is None:
+            return f"skipped {key}: {file} needs ISABELLE_HOME"
+        path = home / file.removeprefix(_ISABELLE_PREFIX)
+    elif isinstance(file, str):
+        path = project / file
     return _Wanted(
-        name if isinstance(name, str) else key,
-        project / file if isinstance(file, str) else None,
-        proof if isinstance(proof, bool) else None,
+        name if isinstance(name, str) else key, path, proof if isinstance(proof, bool) else None
     )
 
 
 def _manifest(path: Path, project: Path) -> dict[str, _Wanted]:
-    """The entries of a manifest, by key."""
+    """The entries of a manifest, by key. An entry pinned to Isabelle's own
+    sources is skipped, with a note, when ISABELLE_HOME is not set."""
     try:
         table = tomllib.loads(read_source(path)).get("snippets", {})
     except (OSError, ValueError) as err:  # TOMLDecodeError and UnicodeDecodeError
         raise InputError(f"{path.as_posix()}: {err}") from err
     if not isinstance(table, dict):
         raise InputError(f"{path.as_posix()}: [snippets] must be a table")
-    entries = sorted(cast(dict[str, object], table).items())
-    return {key: _entry(key, meta, project) for key, meta in entries}
+    wanted: dict[str, _Wanted] = {}
+    for key, meta in sorted(cast(dict[str, object], table).items()):
+        entry = _entry(key, meta, project)
+        if isinstance(entry, str):
+            print(f"isar project extract: note: {entry}", file=sys.stderr)
+        else:
+            wanted[key] = entry
+    return wanted
+
+
+def _pinned(project: Project, files: Iterable[Path | None]) -> list[_Found]:
+    """Declarations of pinned theory files that no session of the project or
+    of a -d directory owns, such as Isabelle's own theories, each read on its
+    own."""
+    found: list[_Found] = []
+    for path in dict.fromkeys(f.resolve() for f in files if f is not None):
+        if project.session_of(path) is None and path.is_file():
+            found += _theory_entities(None, path, False, True, "", True)[0]
+    return found
 
 
 def run_extract(args: argparse.Namespace) -> int:
@@ -463,7 +557,9 @@ def run_extract(args: argparse.Namespace) -> int:
         if args.manifest is not None
         else {name: _Wanted(name, None, None) for name in args.names}
     )
-    found = _entities(_load_dir(args.project, args.include), named=True)
+    project = _load_dir(args.project, args.include)
+    found = _entities(project, named=True, external=True)
+    found += _pinned(project, (w.file for w in wanted.values()))
     ok: dict[str, _Source] = {}
     errors = 0
     for key, want in wanted.items():
@@ -472,7 +568,7 @@ def run_extract(args: argparse.Namespace) -> int:
             errors += 1
             print(f"isar project extract: {result}", file=sys.stderr)
             continue
-        entity, theory = result
+        entity, theory = result.entity, result.theory
         assert theory is not None  # interpretation facts are not looked up
         statement = args.statement if want.proof is None else not want.proof
         ok[key] = (entity, source(theory, entity, statement))
@@ -484,7 +580,7 @@ def run_extract(args: argparse.Namespace) -> int:
                     "qualified": e.qualified,
                     "kind": e.kind,
                     "command": e.command,
-                    "path": display_path(e.path),
+                    "path": _display(e.path),
                     "line": e.line,
                     # The source runs from the start of the first line to the last token.
                     "end_line": e.line + text.count("\n") - 1,
@@ -529,16 +625,16 @@ def _qualified_hit(entity: Entity, name: str) -> bool:
     return name in (entity.name, entity.qualified)
 
 
-def names_table(project: Project, found: list[Entity], docs: bool, derived: bool = False) -> Table:
+def names_table(found: list[_Found], docs: bool, derived: bool = False) -> Table:
     rows: list[dict[str, Cell]] = []
-    for e in found:
-        session = project.session_of(e.path)
+    for f in found:
+        e = f.entity
         rows.append(
             {
                 "name": e.qualified,
                 "kind": e.kind,
                 "command": e.command,
-                "session": session.name if session is not None else "",
+                "session": f.session,
                 "path": display_path(e.path),
                 "line": e.line,
                 "end_line": e.end_line,
@@ -576,13 +672,12 @@ def _prose(doc: str) -> str:
     return " ".join(decode(text).split()).replace("|", "\\|")
 
 
-def write_index(project: Project, found: list[Entity], out: TextIO) -> None:
+def write_index(found: list[_Found], out: TextIO) -> None:
     out.write("# Declarations\n")
     session_name = ""
     path: Path | None = None
-    for e in found:
-        session = project.session_of(e.path)
-        name = session.name if session is not None else ""
+    for f in found:
+        e, name = f.entity, f.session
         if name != session_name or path is None:
             session_name = name
             out.write(f"\n## Session {name}\n")
@@ -594,26 +689,45 @@ def write_index(project: Project, found: list[Entity], out: TextIO) -> None:
         out.write(f"| `{decode(local)}` | {e.command} | {e.line} | {_prose(e.doc)} |\n")
 
 
+def _named(paths: list[Path], include: list[Path], derived: bool) -> list[_Found]:
+    """Declarations of the projects in the directories of ``paths`` and of
+    the theory files among them, each file read with the project it is in."""
+    found: list[_Found] = []
+    interps: list[_Interpretation] = []
+    for path in paths:
+        if path.is_dir():
+            found += _entities(_load_dir(path, include), derived)
+        elif path.is_file() and path.suffix == ".thy":
+            project = Project.load(project_root(path), include)
+            session = project.session_of(path)
+            name = session.name if session is not None else ""
+            more, made = _theory_entities(project, path.resolve(), derived, False, name, False)
+            found += more
+            interps += made
+        else:
+            raise InputError(f"{path.as_posix()}: not a directory or .thy file")
+    return _with_interpretations(found, interps)
+
+
 def run_names(args: argparse.Namespace) -> int:
-    project = _load(args)
-    found = [e for e, _ in _entities(project, args.derived)]
+    found = _named(list(dict.fromkeys(args.paths)) or [Path()], args.include, args.derived)
     if args.kind:
-        found = [e for e in found if e.kind in args.kind]
+        found = [f for f in found if f.entity.kind in args.kind]
     missing = 0
     if args.name:
         for name in args.name:
-            if any(_qualified_hit(e, name) for e in found):
+            if any(_qualified_hit(f.entity, name) for f in found):
                 continue
             missing += 1
             base = name.rpartition(".")[2]
-            near = sorted({e.qualified for e in found if e.name == base})
+            near = sorted({f.entity.qualified for f in found if f.entity.name == base})
             hint = f"; did you mean {', '.join(near)}?" if near else ""
             print(f"isar project names: {name}: no declaration{hint}", file=sys.stderr)
-        found = [e for e in found if any(_qualified_hit(e, n) for n in args.name)]
+        found = [f for f in found if any(_qualified_hit(f.entity, n) for n in args.name)]
     if args.format == "markdown":
-        write_index(project, found, sys.stdout)
+        write_index(found, sys.stdout)
     else:
         # Docstrings span lines, which a text table cannot show.
-        table = names_table(project, found, docs=args.format != "text", derived=args.derived)
+        table = names_table(found, docs=args.format != "text", derived=args.derived)
         RENDERERS[args.format]([table], sys.stdout)
     return 1 if missing else 0
