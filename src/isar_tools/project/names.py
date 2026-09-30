@@ -310,15 +310,12 @@ def interpretations(theory: Theory, name: str, path: Path) -> Iterator[Interpret
         elif command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
             depth += 1
         elif command.name in _INTERPRETATIONS and depth == 0:
-            if len(args) >= 3 and args[0].kind is Kind.WORD and args[1].text in (":", "?:"):
-                locale = args[2]
-            elif len(args) >= 4 and args[1].text == "?" and args[2].text == ":":
-                locale = args[3]
-            else:
+            qualifier, expression = _qualifier(args)
+            if not qualifier:
                 continue
             yield Interpretation(
-                args[0].text,
-                unquote(locale),
+                qualifier,
+                unquote(expression[0]),
                 command.name,
                 name,
                 path,
@@ -366,20 +363,11 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
     ``path``); with ``derived``, also the facts the declarations derive
     (``f_def``, ``f.simps``, the rules of an inductive, ...)."""
     stops = {b.statement: b.stop for b in theory.goal_blocks()}
-    scopes: list[str] = []  # "" for an anonymous block
     commands = theory.commands
-    for i, command in enumerate(commands):
-        toks = list(significant(command.tokens(theory.tokens)))
-        while toks and toks[0].text != command.name:  # `private`, `qualified`
-            toks.pop(0)
-        args = toks[1:]
-        if command.kind is CommandKind.THY_END and command.name == "end":
-            if scopes:
-                scopes.pop()
-            continue
+    for i, command, args, enclosing in _walk(theory):
         if command.name in KINDS:
             target, j = _target(args)
-            scope = target or next((s for s in reversed(scopes) if s), "")
+            scope = target or enclosing
             start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
             for bound in _names(command.name, args[j:]):
                 entity = Entity(
@@ -446,10 +434,115 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                         yield replace(
                             entity, name=fact, kind="fact", doc="", derived_from=entity.qualified
                         )
+
+
+def _walk(theory: Theory) -> Iterator[tuple[int, Command, list[Token], str]]:
+    """Each command but ``end`` with its index, its arguments (after
+    ``private`` or ``qualified`` and the keyword), and the innermost named
+    locale or class block it is in ("" if none)."""
+    scopes: list[str] = []  # "" for an anonymous block
+    for i, command in enumerate(theory.commands):
+        toks = list(significant(command.tokens(theory.tokens)))
+        while toks and toks[0].text != command.name:  # `private`, `qualified`
+            toks.pop(0)
+        args = toks[1:]
+        if command.kind is CommandKind.THY_END and command.name == "end":
+            if scopes:
+                scopes.pop()
+            continue
+        yield i, command, args, next((s for s in reversed(scopes) if s), "")
         if command.kind is CommandKind.THY_DECL_BLOCK and args and args[-1].text == "begin":
             # `context fixes ... begin` is anonymous; `context loc begin` is not.
             named = command.name in _SCOPES and (command.name != "context" or len(args) == 2)
             scopes.append(unquote(args[0]) if named and len(args) >= 2 else "")
+
+
+@dataclass(frozen=True)
+class Instance:
+    """A class instance (``instantiation`` or ``instance t :: c``, ``kind``
+    "instance") or a locale interpretation (``interpretation`` or
+    ``global_interpretation``, ``kind`` "interpretation"). ``entity`` is its
+    source, named ``t :: c`` or by the interpretation's qualifier ("" if it
+    has none); ``target`` is the class or locale, and ``arguments`` the text
+    of the locale expression after it."""
+
+    target: str
+    arguments: str
+    entity: Entity
+
+    @property
+    def kind(self) -> str:
+        return self.entity.kind
+
+
+_CLASS_INSTANCES = frozenset({"instantiation", "instance"})
+# Where the locale expression of an interpretation ends.
+_EXPRESSION_END = frozenset({"rewrites", "defines", "for", "begin"})
+
+
+def _qualifier(args: list[Token]) -> tuple[str, list[Token]]:
+    """``q: loc ...``, ``q?: loc ...``: the qualifier and the rest."""
+    if len(args) >= 3 and args[0].kind is Kind.WORD and args[1].text in (":", "?:"):
+        return args[0].text, args[2:]
+    if len(args) >= 4 and args[1].text == "?" and args[2].text == ":":
+        return args[0].text, args[3:]
+    return "", args
+
+
+def _instance_heads(
+    theory: Theory, command: Command, args: list[Token]
+) -> list[tuple[str, str, str]]:
+    """``(name, target, arguments)`` of what ``command`` instantiates or
+    interprets: one per type of an instantiation, none for a subclass
+    ``instance c1 < c2`` or another command."""
+    if command.name in _CLASS_INSTANCES:
+        colons = next((i for i, t in _top(args) if t.text == "::"), None)
+        rest = args[colons + 1 :] if colons is not None else []
+        if rest and rest[0].text == "(":  # the sorts of the type's arguments
+            rest = rest[_skip_group(rest, 0) :]
+        if not rest or rest[0].kind not in (Kind.WORD, Kind.STRING):
+            return []
+        target = unquote(rest[0])
+        types = [unquote(t) for _, t in _top(args[:colons]) if t.text != "and"]
+        return [(f"{t} :: {target}", target, "") for t in types]
+    qualifier, expression = _qualifier(args)
+    if not expression:
+        return []
+    stop = next(
+        (i for i, t in _top(expression) if t.kind is Kind.WORD and t.text in _EXPRESSION_END),
+        len(expression),
+    )
+    rest = expression[1:stop]
+    arguments = " ".join(theory.text[rest[0].start : rest[-1].end].split()) if rest else ""
+    return [(qualifier, unquote(expression[0]), arguments)]
+
+
+def instances(theory: Theory, name: str, path: Path) -> Iterator[Instance]:
+    """The class instances and locale interpretations of ``theory`` (named
+    ``name``, read from ``path``)."""
+    stops = {b.statement: b.stop for b in theory.goal_blocks()}
+    commands = theory.commands
+    for i, command, args, scope in _walk(theory):
+        if command.name not in _CLASS_INSTANCES | _INTERPRETATIONS:
+            continue
+        start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
+        kind = "instance" if command.name in _CLASS_INSTANCES else "interpretation"
+        for bound, target, arguments in _instance_heads(theory, command, args):
+            entity = Entity(
+                name=bound,
+                kind=kind,
+                command=command.name,
+                theory=name,
+                scope=scope,
+                path=path,
+                line=theory.lines.line(theory.start(command)),
+                end_line=theory.lines.line(end),
+                start=start,
+                end=end,
+                doc=_doc(theory, commands[i - 1] if i else None),
+                statement_end=statement_end,
+            )
+            yield Instance(target, arguments, entity)
 
 
 def source(theory: Theory, entity: Entity, statement: bool = False) -> str:

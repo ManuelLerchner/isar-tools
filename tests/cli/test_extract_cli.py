@@ -104,6 +104,27 @@ def test_statement(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out == "(* B.thy *)\nlocale l = fixes x :: nat\n"
 
 
+def test_instances_by_name(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": "theory T imports Main begin\n"
+            "instantiation nat :: c begin\ninstance by simp\nend\n"
+            "global_interpretation q: loc 1\n  by simp\n"
+            "interpretation loc 2 by simp\nend\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main([*EXTRACT, "--statement", "nat::c", "q"]) == 0
+    assert capsys.readouterr().out == (
+        "(* T.thy *)\ninstantiation nat :: c\n\n(* T.thy *)\nglobal_interpretation q: loc 1\n"
+    )
+    assert main([*EXTRACT, "T.nat :: c", "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["kind"] == "instance"
+
+
 def test_manifest_name_and_proof(project: Path) -> None:
     (project / "m.toml").write_text(
         '[snippets.short]\nname = "A.succ_pos"\n'

@@ -5,6 +5,7 @@ import pytest
 from isar_tools.project.names import (
     Entity,
     entities,
+    instances,
     interpretations,
     interpreted,
     matches,
@@ -259,3 +260,51 @@ def test_interpretations() -> None:
 def test_optional_qualifier() -> None:
     theory = parse_theory("theory D imports Main begin\ninterpretation q?: base 1 by simp\nend")
     assert [i.qualifier for i in interpretations(theory, "D", P)] == ["q"]
+
+
+INSTANCE_SOURCE = r"""theory I imports Main begin
+instantiation sign :: numeric_domain
+begin
+definition "g = 0"
+instance proof
+qed
+end
+instantiation prod :: (order, order) order begin end
+instantiation a and b :: c begin end
+instance nat :: c by simp
+instance c1 < c2 by simp
+instance nat :: (c)
+global_interpretation sign_tf: mono_ops "sign_ops" 1
+  rewrites "x = y" by simp
+interpretation opt?: loc where f = g defines h = "k" by simp
+interpretation loc 2 by simp
+context loc begin
+interpretation inner: loc 3 by simp
+end
+interpretation
+end
+"""
+
+
+def test_instances() -> None:
+    theory = parse_theory(INSTANCE_SOURCE)
+    found = [
+        (i.kind, i.entity.qualified, i.target, i.arguments, i.entity.command)
+        for i in instances(theory, "I", P)
+    ]
+    assert found == [
+        ("instance", "I.sign :: numeric_domain", "numeric_domain", "", "instantiation"),
+        ("instance", "I.prod :: order", "order", "", "instantiation"),
+        ("instance", "I.a :: c", "c", "", "instantiation"),
+        ("instance", "I.b :: c", "c", "", "instantiation"),
+        ("instance", "I.nat :: c", "c", "", "instance"),
+        ("interpretation", "I.sign_tf", "mono_ops", '"sign_ops" 1', "global_interpretation"),
+        ("interpretation", "I.opt", "loc", "where f = g", "interpretation"),
+        ("interpretation", "I", "loc", "2", "interpretation"),
+        ("interpretation", "I.loc.inner", "loc", "3", "interpretation"),
+    ]
+    first = next(instances(theory, "I", P)).entity
+    assert (first.line, first.end_line) == (2, 3)  # the block is not part of it
+    assert source(theory, first, statement=True) == "instantiation sign :: numeric_domain\n"
+    tf = next(i.entity for i in instances(theory, "I", P) if i.entity.name == "sign_tf")
+    assert source(theory, tf, statement=True).endswith('rewrites "x = y"\n')

@@ -16,6 +16,7 @@ from isar_tools.project.names import (
     Entity,
     Interpretation,
     entities,
+    instances,
     interpretations,
     interpreted,
     matches,
@@ -108,8 +109,9 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         help="the source of declarations, by name",
         description="Print the source of named declarations: the command and, for a "
         "goal, its proof, dedented; with --statement, without the proof. NAME is "
-        "`name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and must name "
-        "exactly one declaration of the project. With --manifest, extract every entry "
+        "`name`, `locale.name`, `Theory.name`, `Theory.locale.name`, `type :: class` for "
+        "a class instance, or the qualifier of an interpretation, and must name exactly "
+        "one declaration of the project. With --manifest, extract every entry "
         "of a TOML file into --out, one KEY.thy each, so quoted source cannot drift "
         "from the theories.",
     )
@@ -373,15 +375,19 @@ def run_hierarchy(args: argparse.Namespace) -> int:
 _Found = tuple[Entity, Theory | None]
 
 
-def _entities(project: Project, derived: bool = False) -> list[_Found]:
+def _entities(project: Project, derived: bool = False, named: bool = False) -> list[_Found]:
     """Declarations of the project's theories. With ``derived``, also derived
-    facts and those of qualified interpretations."""
+    facts and those of qualified interpretations; with ``named``, also class
+    instances (``t :: c``) and qualified interpretations (by the qualifier)."""
     found: list[_Found] = []
     interps: list[Interpretation] = []
     for session in project.own_sessions:
         for name, path in project.owned_theories(session).items():
             theory = parse_theory(read_source(path), project.keywords_for(path))
             found += [(e, theory) for e in entities(theory, name, path, derived)]
+            if named:
+                heads = instances(theory, name, path)
+                found += [(i.entity, theory) for i in heads if i.entity.name]
             if derived:
                 interps += interpretations(theory, name, path)
     facts = [e for e, _ in found]
@@ -392,6 +398,8 @@ def _entities(project: Project, derived: bool = False) -> list[_Found]:
 
 def _lookup(found: list[_Found], name: str, file: Path | None) -> _Found | str:
     """The one declaration ``name`` refers to, or why there is none."""
+    if "::" in name:  # an instance, spelt `t :: c`
+        name = " :: ".join(part.strip() for part in name.split("::"))
     hits = [f for f in found if matches(f[0], name)]
     if file is not None:
         hits = [f for f in hits if f[0].path == file.resolve()]
@@ -455,7 +463,7 @@ def run_extract(args: argparse.Namespace) -> int:
         if args.manifest is not None
         else {name: _Wanted(name, None, None) for name in args.names}
     )
-    found = _entities(_load_dir(args.project, args.include))
+    found = _entities(_load_dir(args.project, args.include), named=True)
     ok: dict[str, _Source] = {}
     errors = 0
     for key, want in wanted.items():

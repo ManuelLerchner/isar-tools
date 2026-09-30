@@ -156,12 +156,14 @@ directly before the declaration.
 ```sh
 isar project extract combine_env locale_name.lemma_name
 isar project extract --statement lemma_name     # without the proof
+isar project extract "sign :: numeric_domain" sign_tf   # an instance, an interpretation
 isar project extract --manifest snippets.toml --out generated/ --write   # regenerate
 isar project extract --manifest snippets.toml --out generated/ --check   # diff; exit 1 on drift
 ```
 
-A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and
-must identify one declaration; its source is the command and, for a goal, its
+A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, a
+class instance `type :: class`, or the qualifier of an interpretation
+(`q` for `interpretation q: loc`), and must identify one declaration; its source is the command and, for a goal, its
 proof. With `--statement` it is the statement alone: no proof, and no `begin` of
 a locale, class, or instantiation. A manifest lists snippets as TOML tables,
 each written to `KEY.thy`, so a document that quotes a definition fails its

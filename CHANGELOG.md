@@ -8,6 +8,8 @@
 - `isar project extract --statement`: the statement without its proof, and a locale,
   class, or instantiation without its `begin`. A manifest entry takes `proof = true` or
   `false` to override it, and `name` to extract something other than its key.
+- `isar project extract` finds class instances by `type :: class` and qualified
+  interpretations by their qualifier.
 
 ## 0.2.0 (2026-09-27)
 
