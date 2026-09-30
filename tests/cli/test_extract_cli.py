@@ -96,6 +96,28 @@ def test_manifest_file_pins(project: Path, capsys: pytest.CaptureFixture[str]) -
     ]
 
 
+def test_statement(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main([*EXTRACT, "A.succ_pos", "--statement", "--format", "json"]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert (row["source"], row["line"], row["end_line"]) == ('lemma succ_pos: "succ n > 0"\n', 5, 5)
+    assert main([*EXTRACT, "l", "--statement"]) == 0
+    assert capsys.readouterr().out == "(* B.thy *)\nlocale l = fixes x :: nat\n"
+
+
+def test_manifest_name_and_proof(project: Path) -> None:
+    (project / "m.toml").write_text(
+        '[snippets.short]\nname = "A.succ_pos"\n'
+        '[snippets.long]\nname = "A.succ_pos"\nproof = true\n'
+        '[snippets.plain]\nname = "l.succ_pos"\nproof = false\n'
+    )
+    assert main([*EXTRACT, "--manifest", "m.toml", "--out", "o", "--write", "--statement"]) == 0
+    assert (project / "o/short.thy").read_text() == '(* A.thy *)\nlemma succ_pos: "succ n > 0"\n'
+    assert (project / "o/long.thy").read_text().endswith("unfolding succ_def by simp\n")
+    assert (project / "o/plain.thy").read_text().endswith('"succ x > 0"\n')
+    # `proof = false` holds without --statement too.
+    assert main([*EXTRACT, "--manifest", "m.toml", "--out", "o", "--check"]) == 1
+
+
 @pytest.mark.parametrize(
     ("args", "message"),
     [

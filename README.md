@@ -155,20 +155,26 @@ directly before the declaration.
 
 ```sh
 isar project extract combine_env locale_name.lemma_name
+isar project extract --statement lemma_name     # without the proof
 isar project extract --manifest snippets.toml --out generated/ --write   # regenerate
 isar project extract --manifest snippets.toml --out generated/ --check   # diff; exit 1 on drift
 ```
 
 A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and
 must identify one declaration; its source is the command and, for a goal, its
-proof. A manifest lists names as TOML tables, so a document that quotes a
-definition fails its check when the definition changes or is renamed:
+proof. With `--statement` it is the statement alone: no proof, and no `begin` of
+a locale, class, or instantiation. A manifest lists snippets as TOML tables,
+each written to `KEY.thy`, so a document that quotes a definition fails its
+check when the definition changes or is renamed:
 
 ```toml
 [snippets.combine_env]
 why = "shown in chapter 3"     # free text, ignored
 [snippets.succ_pos]
 file = "src/B.thy"             # choose between declarations of the same name
+proof = true                   # keep the proof, also with --statement
+[snippets.succ_pos_short]
+name = "B.succ_pos"            # what to extract, if not the key
 ```
 
 ### Statistics

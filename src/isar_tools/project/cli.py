@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -24,7 +25,7 @@ from isar_tools.project.workspace import InputError, add_include_option
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
 from isar_tools.source.symbols import decode
-from isar_tools.source.theory import parse_theory
+from isar_tools.source.theory import Theory, parse_theory
 from isar_tools.style import Style, add_color_option, write_diff
 
 
@@ -106,21 +107,30 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "extract",
         help="the source of declarations, by name",
         description="Print the source of named declarations: the command and, for a "
-        "goal, its proof, dedented. NAME is `name`, `locale.name`, `Theory.name`, or "
-        "`Theory.locale.name`, and must name exactly one declaration of the project. "
-        "With --manifest, extract every name listed in a TOML file into --out, one "
-        "NAME.thy each, so quoted source cannot drift from the theories.",
+        "goal, its proof, dedented; with --statement, without the proof. NAME is "
+        "`name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, and must name "
+        "exactly one declaration of the project. With --manifest, extract every entry "
+        "of a TOML file into --out, one KEY.thy each, so quoted source cannot drift "
+        "from the theories.",
     )
     extract.add_argument("names", nargs="*", metavar="NAME")
     extract.add_argument(
         "--project", type=Path, default=Path(), metavar="DIR", help="project directory"
     )
     extract.add_argument(
+        "--statement",
+        action="store_true",
+        help="only the statement: without the proof of a goal, and without the `begin` "
+        "of a locale, class, or instantiation",
+    )
+    extract.add_argument(
         "--manifest",
         type=Path,
         metavar="TOML",
-        help="names to extract: a table [snippets.NAME] per name, with an optional "
-        "`file` (theory path relative to the project) to choose between declarations",
+        help="what to extract: a table [snippets.KEY] per snippet, written to KEY.thy, "
+        "with optional `name` (the NAME to extract; default KEY), `file` (theory path "
+        "relative to the project) to choose between declarations, and `proof` (true or "
+        "false, overriding --statement)",
     )
     extract.add_argument("--out", type=Path, metavar="DIR", help="directory for --manifest")
     mode = extract.add_mutually_exclusive_group()
@@ -359,23 +369,24 @@ def run_hierarchy(args: argparse.Namespace) -> int:
     return 0
 
 
-_Found = tuple[Entity, str]  # an entity and its source text
+# A declaration and its theory; None for a fact an interpretation makes.
+_Found = tuple[Entity, Theory | None]
 
 
 def _entities(project: Project, derived: bool = False) -> list[_Found]:
-    """Declarations of the project's theories, with their source. With
-    ``derived``, also derived facts and those of qualified interpretations."""
+    """Declarations of the project's theories. With ``derived``, also derived
+    facts and those of qualified interpretations."""
     found: list[_Found] = []
     interps: list[Interpretation] = []
     for session in project.own_sessions:
         for name, path in project.owned_theories(session).items():
             theory = parse_theory(read_source(path), project.keywords_for(path))
-            found += [(e, source(theory, e)) for e in entities(theory, name, path, derived)]
+            found += [(e, theory) for e in entities(theory, name, path, derived)]
             if derived:
                 interps += interpretations(theory, name, path)
     facts = [e for e, _ in found]
     for interp in interps:
-        found += [(e, "") for e in interpreted(facts, interp)]
+        found += [(e, None) for e in interpreted(facts, interp)]
     return found
 
 
@@ -392,23 +403,42 @@ def _lookup(found: list[_Found], name: str, file: Path | None) -> _Found | str:
     return f"{name}: ambiguous: {where}"
 
 
+_Source = tuple[Entity, str]  # a declaration and the source text extracted
+
+
 def _snippet(entity: Entity, text: str) -> str:
     return f"(* {display_path(entity.path)} *)\n{text}"
 
 
-def _manifest(path: Path, project: Path) -> dict[str, Path | None]:
-    """Names listed in a manifest, each with the theory file it is pinned to."""
+@dataclass(frozen=True)
+class _Wanted:
+    """A declaration to extract."""
+
+    name: str
+    file: Path | None  # the theory file it is pinned to
+    proof: bool | None  # with or without its proof; None: as --statement says
+
+
+def _entry(key: str, meta: object, project: Path) -> _Wanted:
+    fields = cast(dict[str, object], meta) if isinstance(meta, dict) else {}
+    name, file, proof = fields.get("name"), fields.get("file"), fields.get("proof")
+    return _Wanted(
+        name if isinstance(name, str) else key,
+        project / file if isinstance(file, str) else None,
+        proof if isinstance(proof, bool) else None,
+    )
+
+
+def _manifest(path: Path, project: Path) -> dict[str, _Wanted]:
+    """The entries of a manifest, by key."""
     try:
         table = tomllib.loads(read_source(path)).get("snippets", {})
     except (OSError, ValueError) as err:  # TOMLDecodeError and UnicodeDecodeError
         raise InputError(f"{path.as_posix()}: {err}") from err
     if not isinstance(table, dict):
         raise InputError(f"{path.as_posix()}: [snippets] must be a table")
-    wanted: dict[str, Path | None] = {}
-    for name, meta in sorted(cast(dict[str, object], table).items()):
-        file = cast(dict[str, object], meta).get("file") if isinstance(meta, dict) else None
-        wanted[name] = project / file if isinstance(file, str) else None
-    return wanted
+    entries = sorted(cast(dict[str, object], table).items())
+    return {key: _entry(key, meta, project) for key, meta in entries}
 
 
 def run_extract(args: argparse.Namespace) -> int:
@@ -423,14 +453,21 @@ def run_extract(args: argparse.Namespace) -> int:
     wanted = (
         _manifest(args.manifest, args.project)
         if args.manifest is not None
-        else dict.fromkeys(args.names)
+        else {name: _Wanted(name, None, None) for name in args.names}
     )
     found = _entities(_load_dir(args.project, args.include))
-    results = {name: _lookup(found, name, file) for name, file in wanted.items()}
-    errors = [r for r in results.values() if isinstance(r, str)]
-    for error in errors:
-        print(f"isar project extract: {error}", file=sys.stderr)
-    ok = {name: r for name, r in results.items() if not isinstance(r, str)}
+    ok: dict[str, _Source] = {}
+    errors = 0
+    for key, want in wanted.items():
+        result = _lookup(found, want.name, want.file)
+        if isinstance(result, str):
+            errors += 1
+            print(f"isar project extract: {result}", file=sys.stderr)
+            continue
+        entity, theory = result
+        assert theory is not None  # interpretation facts are not looked up
+        statement = args.statement if want.proof is None else not want.proof
+        ok[key] = (entity, source(theory, entity, statement))
     if args.manifest is None:
         if args.format == "json":
             rows = [
@@ -441,7 +478,8 @@ def run_extract(args: argparse.Namespace) -> int:
                     "command": e.command,
                     "path": display_path(e.path),
                     "line": e.line,
-                    "end_line": e.end_line,
+                    # The source runs from the start of the first line to the last token.
+                    "end_line": e.line + text.count("\n") - 1,
                     "source": text,
                 }
                 for name, (e, text) in ok.items()
@@ -454,13 +492,13 @@ def run_extract(args: argparse.Namespace) -> int:
     return _sync(args, ok) or (1 if errors else 0)
 
 
-def _sync(args: argparse.Namespace, ok: dict[str, _Found]) -> int:
+def _sync(args: argparse.Namespace, ok: dict[str, _Source]) -> int:
     """Write or compare the manifest's snippets; 1 if ``--check`` finds drift."""
     out: Path = args.out
     style = Style.for_stream(args.color, sys.stdout)
     stale = 0
-    for name, (entity, text) in ok.items():
-        target = out / f"{name}.thy"
+    for key, (entity, text) in ok.items():
+        target = out / f"{key}.thy"
         snippet = _snippet(entity, text)
         stored = read_source(target) if target.is_file() else ""
         if stored == snippet:

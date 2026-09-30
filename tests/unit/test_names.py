@@ -125,6 +125,15 @@ def test_source_includes_proof_and_modifier(found: dict[str, Entity]) -> None:
     assert source(theory, found["T.even"]).endswith('| "odd 0 = False"\n')
 
 
+def test_source_statement(found: dict[str, Entity]) -> None:
+    theory = parse_theory(SOURCE)
+    assert source(theory, found["T.loc.in_loc"], statement=True) == 'lemma in_loc [simp]: "n = n"\n'
+    assert source(theory, found["T.loc"], statement=True) == "locale loc =\n  fixes n :: nat\n"
+    assert source(theory, found["T.b"], statement=True) == "bundle b\n"
+    # Without a proof or `begin`, the statement is the whole source.
+    assert source(theory, found["T.succ"], statement=True) == source(theory, found["T.succ"])
+
+
 def test_source_dedents() -> None:
     theory = parse_theory('theory T imports Main begin\n  lemma x: "A"\n    by simp\nend\n')
     (entity,) = entities(theory, "T", P)

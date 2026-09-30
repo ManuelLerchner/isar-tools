@@ -10,7 +10,8 @@ inside a comment, string, or cartouche never counts. Each entity records
 - its scope: the locale or class it is declared in, from an ``(in loc)``
   target or the innermost enclosing ``locale``/``class``/``context NAME``
   block that is open (``begin`` ... ``end``); anonymous blocks add nothing;
-- its extent: the declaring command and, for a goal, its proof;
+- its extent: the declaring command and, for a goal, its proof; its statement
+  is the command alone, without the ``begin`` of a block it opens;
 - its docstring: a ``text`` block directly before it.
 
 The qualified name is ``Theory.scope.name``, as Isabelle's rendered theories
@@ -116,6 +117,9 @@ class Entity:
     end: int  # text offset after its last token
     doc: str  # the text block directly before; "" if none
     derived_from: str = ""  # qualified name of the declaration this fact comes from
+    # Text offset after the statement: the declaring command without its proof
+    # or the `begin` of the block it opens.
+    statement_end: int = 0
 
     @property
     def qualified(self) -> str:
@@ -344,6 +348,19 @@ def interpreted(facts: list[Entity], interpretation: Interpretation) -> Iterator
             )
 
 
+def _extent(theory: Theory, commands: list[Command], i: int, stop: int) -> tuple[int, int, int]:
+    """The start of the line of ``commands[i]``, the end of its statement,
+    and the end of ``commands[i:stop]``, the command with its proof."""
+    command = commands[i]
+    toks = list(significant(command.tokens(theory.tokens)))
+    if command.kind is CommandKind.THY_DECL_BLOCK and len(toks) > 1 and toks[-1].text == "begin":
+        statement_end = toks[-2].end
+    else:
+        statement_end = theory.end(command)
+    start = theory.text.rfind("\n", 0, theory.start(command)) + 1
+    return start, statement_end, theory.end(commands[stop - 1])
+
+
 def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> Iterator[Entity]:
     """Every named declaration of ``theory`` (named ``name``, read from
     ``path``); with ``derived``, also the facts the declarations derive
@@ -363,10 +380,7 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
         if command.name in KINDS:
             target, j = _target(args)
             scope = target or next((s for s in reversed(scopes) if s), "")
-            last = commands[stops.get(i, i + 1) - 1]
-            start = theory.start(command)
-            start = theory.text.rfind("\n", 0, start) + 1
-            end = theory.end(last)
+            start, statement_end, end = _extent(theory, commands, i, stops.get(i, i + 1))
             for bound in _names(command.name, args[j:]):
                 entity = Entity(
                     name=bound,
@@ -380,6 +394,7 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                     start=start,
                     end=end,
                     doc=_doc(theory, commands[i - 1] if i else None),
+                    statement_end=statement_end,
                 )
                 yield entity
                 # Parameters (`fixes`) are constants of the locale, and named
@@ -437,10 +452,12 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
             scopes.append(unquote(args[0]) if named and len(args) >= 2 else "")
 
 
-def source(theory: Theory, entity: Entity) -> str:
+def source(theory: Theory, entity: Entity, statement: bool = False) -> str:
     """The entity's source text, dedented, with ``\\n`` line breaks and one
-    final newline, so it does not depend on the line endings of a checkout."""
-    text = theory.text[entity.start : entity.end].replace("\r\n", "\n").replace("\r", "\n")
+    final newline, so it does not depend on the line endings of a checkout.
+    With ``statement``, only the statement: no proof, and no ``begin``."""
+    end = entity.statement_end if statement else entity.end
+    text = theory.text[entity.start : end].replace("\r\n", "\n").replace("\r", "\n")
     return textwrap.dedent(text).rstrip() + "\n"
 
 

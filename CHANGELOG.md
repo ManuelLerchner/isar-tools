@@ -5,6 +5,9 @@
 - `isar project names` lists the constructors, discriminators, and selectors of a
   datatype or codatatype as constants named in the type (`t.C`, `t.sel`), and the
   constants of `consts`.
+- `isar project extract --statement`: the statement without its proof, and a locale,
+  class, or instantiation without its `begin`. A manifest entry takes `proof = true` or
+  `false` to override it, and `name` to extract something other than its key.
 
 ## 0.2.0 (2026-09-27)
 
