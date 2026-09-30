@@ -30,6 +30,10 @@
 - `isar check`: `theory-path` in the `project` group, a quoted `theories` entry with a
   `/` (`theories "generated/Foo"`), which Isabelle does not load. The fix is
   `directories "generated"` and `theories Foo`.
+- `isar check retired`: identifiers the project lists as removed (`check.retired`,
+  `check.retired-file`, `--retired`, `--retired-file`) that appear again outside
+  `(* *)` comments, also as `foo_def` or `foo_axioms`. A deleted constant cited in an
+  assumption is otherwise a free variable, and the build does not notice.
 
 ## 0.2.0 (2026-09-27)
 

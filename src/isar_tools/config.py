@@ -17,6 +17,8 @@ The file is found by searching upward from the working directory; the first
     groups = ["project", "proofs", "syntax"]
     ignore = ["oops"]
     allow = ["some_name"]
+    retired = ["old_name"]
+    retired-file = "retired_identifiers.txt"
 
     [stats]
     max-line-length = 100
@@ -103,7 +105,7 @@ class Config:
 
 _SECTIONS: dict[str, dict[str, type]] = {
     "fmt": {"max-line-length": int, "indent": int, "max-blank-lines": int, "normalize": bool},
-    "check": {"groups": list, "ignore": list, "allow": list},
+    "check": {"groups": list, "ignore": list, "allow": list, "retired": list, "retired-file": str},
     "stats": {"max-line-length": int, "watch": list},
 }
 
@@ -172,6 +174,8 @@ def parse(path: Path, table: dict[str, object]) -> Config:
         else:
             raise ConfigError(f"{where}: unknown option {key!r}")
     _validate_check(where, config.check)
+    if "retired-file" in config.check:
+        config.check["retired-file"] = base / cast(str, config.check["retired-file"])
     return config
 
 
@@ -228,6 +232,9 @@ def apply(config: Config, args: argparse.Namespace) -> None:
         _default(args, "groups", config.check.get("groups"))
         args.ignore = [*cast(Sequence[str], config.check.get("ignore", [])), *args.ignore]
         args.allow = [*cast(Sequence[str], config.check.get("allow", [])), *args.allow]
+        args.retired = [*cast(Sequence[str], config.check.get("retired", [])), *args.retired]
+        if "retired-file" in config.check:
+            args.retired_file = [config.check["retired-file"], *args.retired_file]
     elif command == "stats" and hasattr(args, "max_line_length"):
         for name, default in STATS_DEFAULTS.items():
             _default(args, name, config.stats.get(name.replace("_", "-"), default))

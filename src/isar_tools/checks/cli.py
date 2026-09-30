@@ -9,6 +9,7 @@ from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
+from isar_tools.checks.retired import check_retired, read_retired
 from isar_tools.checks.sources import (
     check_hygiene,
     check_leftovers,
@@ -17,7 +18,7 @@ from isar_tools.checks.sources import (
 )
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
 from isar_tools.config import add_exclude_option
-from isar_tools.project.workspace import SourceFile, add_include_option, load
+from isar_tools.project.workspace import InputError, SourceFile, add_include_option, load
 from isar_tools.render import RENDERERS, Column, Table, display_path
 from isar_tools.style import Style, add_color_option
 
@@ -62,6 +63,22 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         metavar="NAME",
         help="locales: do not report this identifier (repeatable)",
     )
+    check.add_argument(
+        "--retired",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="retired: report this identifier (repeatable; adds to check.retired)",
+    )
+    check.add_argument(
+        "--retired-file",
+        action="append",
+        default=[],
+        type=Path,
+        metavar="FILE",
+        help="retired: report the identifiers listed in FILE, one per line, # comments "
+        "(repeatable; adds to check.retired-file)",
+    )
     check.add_argument("--format", choices=FORMATS, default="text")
     add_color_option(check)
     add_include_option(check)
@@ -81,8 +98,21 @@ def normalize_argv(argv: list[str]) -> list[str]:
     return args
 
 
+def _retired(args: argparse.Namespace) -> frozenset[str]:
+    names: list[str] = list(args.retired)
+    for path in args.retired_file:
+        try:
+            names += read_retired(path)
+        except (OSError, UnicodeDecodeError) as error:
+            raise InputError(f"{Path(path).as_posix()}: {error}") from error
+    if not names:
+        raise InputError("retired: no names; set check.retired or check.retired-file")
+    return frozenset(names)
+
+
 def collect_findings(args: argparse.Namespace) -> list[Finding]:
     groups: set[str] = set(args.groups or DEFAULT_GROUPS)
+    retired = _retired(args) if "retired" in groups else None
     workspace = load(args.paths, args.include, args.exclude)
     workspace.note_skipped("check")
     findings: list[Finding] = []
@@ -101,6 +131,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
         readable.append(source)
         if "hygiene" in groups:
             findings += check_hygiene(source.path, text)
+        if retired is not None:
+            findings += check_retired(source.path, text, retired)
     if groups & {"proofs", "syntax", "symbols", "docs", "leftovers"}:
         for source in readable:
             theory = source.parse()
@@ -157,6 +189,7 @@ _GROUP_COLORS = {
     "locales": "blue",
     "hygiene": "magenta",
     "leftovers": "yellow",
+    "retired": "red",
 }
 
 

@@ -94,6 +94,7 @@ isar check                        # groups project, proofs, and syntax
 isar check symbols src/           # non-ASCII characters outside comments
 isar check docs src/              # theories, headings, locales, classes without a text block
 isar check leftovers hygiene src/ # sledgehammer, thm, nitpick without expect; tabs, CRs
+isar check retired --retired-file retired.txt src/   # removed names that came back
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check --ignore oops --format json
 ```
@@ -108,6 +109,7 @@ isar check --ignore oops --format json
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
+| `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
 
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
@@ -121,6 +123,14 @@ imports), not bound in the term, and not used anywhere else in the project or
 in the `-d` theories it imports. Only names of at least four characters with an
 underscore (or `\<^sub>`) are reported; `--allow NAME` (repeatable) accepts a
 name. Inner syntax is approximated lexically: see `isar_tools/checks/locales.py`.
+
+`retired` reports identifiers the project removed on purpose, listed in
+`check.retired`, in the file `check.retired-file` names (one per line, `#`
+comments), or with `--retired NAME`. Isabelle reads an unknown lowercase name in
+an assumption or a theorem statement as a free variable, so a locale whose
+assumption cites a deleted constant still builds and silently assumes less.
+Matching is whole-word outside `(* *)` comments, and `foo_def`, `foo_def_raw`,
+`foo_axioms`, and `foo_axioms_def` count as `foo`.
 
 ### Commands of other sessions
 
@@ -221,6 +231,7 @@ max-line-length = 100    # also: indent, max-blank-lines, normalize
 
 [tool.isar.check]
 groups = ["project", "proofs", "syntax"]      # also: ignore, allow
+retired-file = "retired_identifiers.txt"      # also: retired = ["name", ...]
 
 [tool.isar.stats]
 max-line-length = 100    # also: watch
