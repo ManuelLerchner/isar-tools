@@ -145,9 +145,10 @@ isar project names --derived                      # also f_def, f.simps, L.intro
 ```
 
 Names are qualified as Isabelle renders them: a lemma inside `context loc` is
-`Theory.loc.name`. With `--name`, a qualifier naming the wrong scope does not
-match, and the error suggests the names that exist, so links into rendered
-theories can be checked without building them. The docstring is a `text` block
+`Theory.loc.name`, and a datatype's constructors and selectors and a record's
+fields are named in their type (`Theory.t.C`). With `--name`, a qualifier
+naming the wrong scope does not match, and the error suggests the names that
+exist, so links into rendered theories can be checked without building them. The docstring is a `text` block
 directly before the declaration.
 
 ### Quoting declarations

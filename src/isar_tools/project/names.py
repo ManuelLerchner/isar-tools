@@ -4,7 +4,9 @@ Read from the command structure, not by pattern matching lines, so a keyword
 inside a comment, string, or cartouche never counts. Each entity records
 
 - its base name and kind (``fact``, ``constant``, ``type``, ``locale``,
-  ``class``, ``bundle``);
+  ``class``, ``bundle``); the constructors, discriminators, and selectors of a
+  datatype and the fields of a record are constants named in the type
+  (``t.C``);
 - its scope: the locale or class it is declared in, from an ``(in loc)``
   target or the innermost enclosing ``locale``/``class``/``context NAME``
   block that is open (``begin`` ... ``end``); anonymous blocks add nothing;
@@ -13,7 +15,7 @@ inside a comment, string, or cartouche never counts. Each entity records
 
 The qualified name is ``Theory.scope.name``, as Isabelle's rendered theories
 spell it. Names a command derives (``foo_def``, ``foo.simps``) and names made
-by interpretations are not listed.
+by interpretations are listed only on request (``derived``).
 """
 
 import textwrap
@@ -42,6 +44,7 @@ KINDS: dict[str, str] = {
     ),
     **dict.fromkeys(
         [
+            "consts",
             "definition",
             "abbreviation",
             "fun",
@@ -137,17 +140,30 @@ def _target(toks: list[Token]) -> tuple[str, int]:
     return "", 0
 
 
-def _split_and(toks: list[Token]) -> Iterator[list[Token]]:
+def _top(toks: list[Token]) -> Iterator[tuple[int, Token]]:
+    """Tokens outside brackets, with their index; brackets are not yielded."""
     depth = 0
-    part: list[Token] = []
-    for tok in toks:
-        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
-        if depth == 0 and tok.kind is Kind.WORD and tok.text == "and":
-            yield part
-            part = []
-        else:
-            part.append(tok)
-    yield part
+    for i, tok in enumerate(toks):
+        step = {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
+        depth += step
+        if depth == 0 and not step:
+            yield i, tok
+
+
+def _split_top(toks: list[Token], separator: str) -> list[list[Token]]:
+    """``toks`` split at ``separator`` outside brackets."""
+    cuts = [i for i, t in _top(toks) if t.text == separator and t.kind is not Kind.STRING]
+    return [toks[a + 1 : b] for a, b in zip([-1, *cuts], [*cuts, len(toks)], strict=True)]
+
+
+def _typed(toks: list[Token]) -> list[str]:
+    """Names declared as ``f :: T`` outside brackets, as in ``consts`` and in
+    the body of a record."""
+    return [t.text for i, t in _top(toks) if t.kind is Kind.WORD and _follows(toks, i) == "::"]
+
+
+def _follows(toks: list[Token], i: int) -> str:
+    return toks[i + 1].text if i + 1 < len(toks) else ""
 
 
 def _names(command: str, toks: list[Token]) -> list[str]:
@@ -162,10 +178,12 @@ def _names(command: str, toks: list[Token]) -> list[str]:
         return []
     if kind in ("locale", "class", "bundle"):
         return [unquote(toks[0])] if toks and toks[0].kind in (Kind.WORD, Kind.STRING) else []
+    if command == "consts":  # `consts f :: T g :: U`, without `and`
+        return _typed(toks)
     # Parameters (`for r`) and specifications (`where`) follow the names.
     stop = next((j for j, t in enumerate(toks) if t.text in ("where", "for")), len(toks))
     names: list[str] = []
-    for part in _split_and(toks[:stop] if kind == "constant" else toks):
+    for part in _split_top(toks[:stop] if kind == "constant" else toks, "and"):
         i = 0
         while i < len(part) and (
             part[i].text == "(" or (command in _TYPE_PARAMS and part[i].text.startswith("'"))
@@ -203,23 +221,37 @@ DERIVED: dict[str, tuple[str, ...]] = {
 }
 _INDUCTIVE = frozenset({"inductive", "inductive_set", "coinductive", "coinductive_set"})
 _INTERPRETATIONS = frozenset({"interpretation", "global_interpretation"})
+_DATATYPES = frozenset({"datatype", "codatatype"})
 
 
 def _record_fields(args: list[Token]) -> list[str]:
-    """Fields of ``record 'a r = parent + f :: T g :: U``: words before ``::``
-    at bracket depth 0, after the ``=``."""
+    """Fields of ``record 'a r = parent + f :: T g :: U``."""
     eq = next((i for i, t in enumerate(args) if t.text == "="), None)
-    if eq is None:
-        return []
-    fields: list[str] = []
-    depth = 0
-    body = args[eq + 1 :]
-    for i, tok in enumerate(body):
-        depth += {"(": 1, "[": 1, ")": -1, "]": -1}.get(tok.text, 0)
-        following = body[i + 1].text if i + 1 < len(body) else ""
-        if depth == 0 and tok.kind is Kind.WORD and following == "::":
-            fields.append(tok.text)
-    return fields
+    return _typed(args[eq + 1 :]) if eq is not None else []
+
+
+def _constructors(args: list[Token]) -> Iterator[tuple[str, str]]:
+    """``(type, name)`` for the constructors of ``datatype t = is_A: A (sel: T)
+    | B and u = C``, their discriminators (``is_A``), and their selectors
+    (``sel``)."""
+    stop = next((i for i, t in _top(args) if t.text in ("where", "for")), len(args))
+    for part in _split_top(args[:stop], "and"):
+        eq = next((i for i, t in _top(part) if t.text == "="), len(part))
+        # The type's name follows its parameters and the options in brackets.
+        head = [t for _, t in _top(part[:eq]) if not t.text.startswith("'")]
+        if not head or head[-1].kind is not Kind.WORD:
+            continue
+        found: dict[str, None] = {}
+        for alt in _split_top(part[eq + 1 :], "|"):
+            if len(alt) > 2 and alt[1].text == ":":  # a discriminator
+                found.setdefault(alt[0].text)
+                alt = alt[2:]
+            if alt and alt[0].kind is Kind.WORD:
+                found.setdefault(alt[0].text)
+            for i in range(len(alt) - 2):
+                if alt[i].text == "(" and alt[i + 1].kind is Kind.WORD and alt[i + 2].text == ":":
+                    found.setdefault(alt[i + 1].text)
+        yield from ((head[-1].text, name) for name in found)
 
 
 def _rule_names(args: list[Token]) -> list[str]:
@@ -387,6 +419,13 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                             scope=bound,
                             doc="",
                         )
+                # Constructors, discriminators, and selectors: `t.C`.
+                if command.name in _DATATYPES:
+                    for type_name, constant in _constructors(args[j:]):
+                        if type_name == bound:
+                            yield replace(
+                                entity, name=constant, kind="constant", scope=bound, doc=""
+                            )
                 if derived:
                     for fact in _derived(command.name, bound, args[j:]):
                         yield replace(

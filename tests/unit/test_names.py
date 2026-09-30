@@ -87,6 +87,9 @@ def test_names_kinds_and_scopes(found: dict[str, Entity]) -> None:
         "T.pair": ("type", "datatype"),
         "T.other": ("type", "datatype"),
         "T.box": ("type", "datatype"),
+        "T.pair.Pair": ("constant", "datatype"),
+        "T.other.Other": ("constant", "datatype"),
+        "T.box.Box": ("constant", "datatype"),
         "T.tuple": ("type", "type_synonym"),
         "T.point": ("type", "record"),
         "T.top": ("fact", "lemma"),
@@ -195,6 +198,44 @@ def test_inductive_without_where_has_no_rule_names() -> None:
 def test_record_without_equals() -> None:
     theory = parse_theory("theory D imports Main begin\nrecord r\nend")
     assert [e.name for e in entities(theory, "D", P)] == ["r"]
+
+
+def test_constructors_selectors_and_consts() -> None:
+    theory = parse_theory(
+        r"""theory D imports Main begin
+datatype (plugins del: size) edge = Skip | is_asg: Assign (var: nat) (rhs: "nat list")
+  | Call "nat" ("call _" 60)
+  and 'a tree = Leaf | Node "'a tree" (val: 'a) "'a tree"
+  for map: tmap
+datatype broken
+datatype odd = Odd | and = Unnamed
+codatatype 'a stream = SCons (shd: 'a) (stl: "'a stream")
+consts gamma :: "nat \<Rightarrow> nat set" ("\<lbrakk>_\<rbrakk>") delta :: nat
+end"""
+    )
+    found = {e.qualified: (e.kind, e.command) for e in entities(theory, "D", P)}
+    assert found == {
+        "D.edge": ("type", "datatype"),
+        "D.edge.Skip": ("constant", "datatype"),
+        "D.edge.is_asg": ("constant", "datatype"),
+        "D.edge.Assign": ("constant", "datatype"),
+        "D.edge.var": ("constant", "datatype"),
+        "D.edge.rhs": ("constant", "datatype"),
+        "D.edge.Call": ("constant", "datatype"),
+        "D.tree": ("type", "datatype"),
+        "D.tree.Leaf": ("constant", "datatype"),
+        "D.tree.Node": ("constant", "datatype"),
+        "D.tree.val": ("constant", "datatype"),
+        "D.broken": ("type", "datatype"),
+        "D.odd": ("type", "datatype"),
+        "D.odd.Odd": ("constant", "datatype"),
+        "D.stream": ("type", "codatatype"),
+        "D.stream.SCons": ("constant", "codatatype"),
+        "D.stream.shd": ("constant", "codatatype"),
+        "D.stream.stl": ("constant", "codatatype"),
+        "D.gamma": ("constant", "consts"),
+        "D.delta": ("constant", "consts"),
+    }
 
 
 def test_interpretations() -> None:

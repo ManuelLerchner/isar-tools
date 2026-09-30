@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `isar project names` lists the constructors, discriminators, and selectors of a
+  datatype or codatatype as constants named in the type (`t.C`, `t.sel`), and the
+  constants of `consts`.
+
 ## 0.2.0 (2026-09-27)
 
 - Install from conda-forge: `pixi global install isar-tools` or
