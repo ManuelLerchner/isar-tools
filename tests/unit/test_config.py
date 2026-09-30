@@ -60,14 +60,26 @@ def test_parse_everything(
             "include": ["$AFP", "vendor", "missing", "$UNSET_ISAR_VAR"],
             "exclude": ["gen/**"],
             "fmt": {"max-line-length": 100, "normalize": True},
-            "check": {"groups": ["proofs"], "ignore": ["oops"], "allow": ["n"]},
+            "check": {
+                "groups": ["proofs"],
+                "ignore": ["oops"],
+                "allow": ["n"],
+                "retired": ["old"],
+                "retired-file": "retired.txt",
+            },
             "stats": {"max-line-length": 80, "watch": ["metis"]},
         },
     )
     assert config.include == [base / "afp" / "thys", base / "vendor"]
     assert config.exclude == [Exclude(base, "gen/**")]
     assert config.fmt == {"max-line-length": 100, "normalize": True}
-    assert config.check == {"groups": ["proofs"], "ignore": ["oops"], "allow": ["n"]}
+    assert config.check == {
+        "groups": ["proofs"],
+        "ignore": ["oops"],
+        "allow": ["n"],
+        "retired": ["old"],
+        "retired-file": base / "retired.txt",
+    }
     assert config.stats == {"max-line-length": 80, "watch": ["metis"]}
     err = capsys.readouterr().err
     assert "include 'missing': not a directory here; skipped" in err
@@ -88,6 +100,7 @@ def test_parse_everything(
         ({"check": {"groups": ["nope"]}}, "check.groups: unknown group 'nope'"),
         ({"check": {"ignore": ["nope"]}}, "check.ignore: unknown code 'nope'"),
         ({"stats": {"watch": "metis"}}, "stats.watch: expected a list of strings"),
+        ({"check": {"retired-file": ["a"]}}, "check.retired-file: expected str"),
     ],
 )
 def test_parse_errors(tmp_path: Path, table: dict[str, object], message: str) -> None:

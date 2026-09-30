@@ -59,7 +59,18 @@ CODES: dict[str, tuple[str, str]] = {
     "proof-search": ("leftovers", "sledgehammer, try, try0, or solve_direct left in"),
     "counterexample-search": ("leftovers", "nitpick, quickcheck, or refute without expect"),
     "diagnostic-command": ("leftovers", "a diagnostic command (thm, print_*, find_theorems, ...)"),
+    "retired-identifier": ("retired", "an identifier the project lists as removed comes back"),
 }
 
-GROUPS = ("project", "proofs", "syntax", "symbols", "docs", "locales", "hygiene", "leftovers")
+GROUPS = (
+    "project",
+    "proofs",
+    "syntax",
+    "symbols",
+    "docs",
+    "locales",
+    "hygiene",
+    "leftovers",
+    "retired",
+)
 DEFAULT_GROUPS = ("project", "proofs", "syntax")

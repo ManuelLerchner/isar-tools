@@ -190,3 +190,40 @@ def test_several_positional_groups() -> None:
         "src",
     ]
     assert normalize_argv(["fmt", "docs"]) == ["fmt", "docs"]
+
+
+def test_retired(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "isar.toml": '[check]\nretired = ["old_const"]\nretired-file = "retired.txt"\n',
+            "retired.txt": "# removed with the pair interface\ngone_lemma\n\nloc\n",
+            "T.thy": "theory T imports Main begin\n"
+            "(* old_const was replaced by new_const *)\n"
+            'locale l = assumes "old_const x = x"\n'
+            'lemma new_old_const: "True" using gone_lemma loc_axioms_def loc.intro by simp\n'
+            "end\n",
+        }
+    )
+    monkeypatch.chdir(base)
+    status, out, err = run(capsys, "retired", "T.thy")
+    assert status == 1
+    assert out.splitlines() == [
+        "T.thy:3:21: retired-identifier: old_const is retired",
+        "T.thy:4:35: retired-identifier: gone_lemma is retired",
+        "T.thy:4:46: retired-identifier: loc_axioms_def: loc is retired",
+        "T.thy:4:61: retired-identifier: loc is retired",
+    ]
+    assert err == "4 findings: 4 retired-identifier\n"
+    assert run(capsys, "retired", "T.thy", "--retired", "new_const")[0] == 1
+    (base / "isar.toml").unlink()
+    assert run(capsys, "retired", "T.thy") == (
+        2,
+        "",
+        "isar check: retired: no names; set check.retired or check.retired-file\n",
+    )
+    status, _, err = run(capsys, "retired", "T.thy", "--retired-file", "absent.txt")
+    assert status == 2
+    assert "absent.txt" in err
+    assert run(capsys, "retired", "T.thy", "--retired", "unused")[0] == 0
