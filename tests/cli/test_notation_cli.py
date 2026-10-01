@@ -205,3 +205,46 @@ def test_invalid(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     ]
     (project / "bad.toml").write_text('[notation.sq]\nargs = "n"\n')
     assert run(capsys, "bad.toml")[2] == ["isar project: sq: args must be a list of strings"]
+
+
+def test_anchors_the_sources_cannot_give(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories C",
+            "C.thy": "theory C imports Main begin\n"
+            'context order begin\nabbreviation b where "b \\<equiv> 1"\nend\nend\n',
+            # A theory of no session: its anchor is only in the build.
+            "Loose.thy": 'theory Loose imports Main begin\ndefinition c where "c = 0"\nend\n',
+            "n.toml": '[notation.b]\nname = "order.b"\n[notation.c]\nfile = "Loose.thy"\n',
+            "html/HOL/HOL/Orderings.html": '<i id="Orderings.order|locale"></i>',
+            "html/HOL/HOL-Library/Lib.html": '<i id="Lib.order|locale"></i>',
+            "html/Unsorted/S/C.html": '<i id="C.order.b|const"></i>',
+            "html/Other/Loose/Loose.html": '<i id="Loose.c|const"></i>',
+        }
+    )
+    monkeypatch.chdir(base)
+    built = ["n.toml", "--browser-info", "html"]
+    status, _, err = run(capsys, *built)
+    assert (status, err) == (
+        1,
+        [
+            "isar project notation: C.thy:3: b: order: 2 definitions: "
+            "HOL/HOL-Library/Lib.html#Lib.order%7Clocale, "
+            "HOL/HOL/Orderings.html#Orderings.order%7Clocale"
+        ],
+    )
+    status, out, _ = run(capsys, *built, "--prefer", "HOL/HOL/")
+    assert status == 0
+    b, c = json.loads(out)["notation"]
+    assert b["owner_url"] == "HOL/HOL/Orderings.html#Orderings.order%7Clocale"
+    assert c["url"] == "Other/Loose/Loose.html#Loose.c%7Cconst"
+    (base / "html/Other/Loose/Loose.html").unlink()
+    (base / "html/HOL/HOL-Library/Lib.html").unlink()
+    (base / "html/HOL/HOL/Orderings.html").unlink()
+    status, out, err = run(capsys, *built)
+    assert (status, err) == (1, ["isar project notation: Loose.thy:2: c: Loose.c|const: no anchor"])
+    (base / "n.toml").write_text('[notation.b]\nname = "order.b"\n')
+    status, out, _ = run(capsys, *built)
+    assert (status, json.loads(out)["notation"][0]["owner_url"]) == (0, None)

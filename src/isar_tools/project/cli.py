@@ -13,6 +13,7 @@ from typing import TextIO, cast
 from urllib.parse import quote, unquote
 
 from isar_tools.checks.links import Pages
+from isar_tools.project.anchors import Anchor, Index, read_anchors
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
 from isar_tools.project.names import (
@@ -202,8 +203,11 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "--browser-info",
         type=Path,
         metavar="DIR",
-        help="Isabelle's HTML presentation: every anchor must exist on its page",
+        help="Isabelle's HTML presentation: every anchor must exist on its page, and an "
+        "anchor the sources cannot give (a theory of no session, an owner outside the "
+        "project) is looked up there",
     )
+    add_prefer_option(notation)
     notation.add_argument("--out", type=Path, metavar="JSON", help="file for --write and --check")
     mode = notation.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true", help="write --out")
@@ -211,6 +215,41 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     add_include_option(notation)
     add_color_option(notation)
     notation.set_defaults(func=run_notation)
+    anchors = views.add_parser(
+        "anchors",
+        help="anchors of Isabelle's HTML presentation, by name",
+        description="Read the anchors of a built HTML presentation (browser_info), HOL and "
+        "library sessions included; a copy of another session's theory (Owner.Theory.html) "
+        "is skipped. Without NAME, list every anchor. A NAME is any dotted suffix of an "
+        "anchor (`loc.name`, `name`) or `Theory.name`, optionally with its kind "
+        "(`name|const`); exit 1 if it names no anchor or several definitions, listing them.",
+    )
+    anchors.add_argument("names", nargs="*", metavar="NAME")
+    anchors.add_argument(
+        "--browser-info", type=Path, required=True, metavar="DIR", help="the presentation"
+    )
+    anchors.add_argument(
+        "--kind",
+        action="append",
+        default=[],
+        metavar="KIND",
+        help="for a NAME without |kind: try this anchor kind (fact, const, type, locale, ...); "
+        "repeatable, the first kind with a match wins",
+    )
+    add_prefer_option(anchors)
+    anchors.add_argument("--format", choices=sorted(RENDERERS), default="text")
+    anchors.set_defaults(func=run_anchors)
+
+
+def add_prefer_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--prefer",
+        action="append",
+        default=[],
+        metavar="PREFIX",
+        help="among definitions of one name, keep those whose page (below browser_info) "
+        "starts with PREFIX, such as `MyChapter/` or `HOL/HOL/`; repeatable, first is best",
+    )
 
 
 def _load(args: argparse.Namespace) -> Project:
@@ -910,6 +949,71 @@ def _missing_anchors(row: dict[str, object], browser_info: Path, pages: Pages) -
     return missing
 
 
+def _from_build(row: dict[str, object], index: Index, prefer: list[str]) -> list[str]:
+    """Fill the anchors of ``row`` that the sources cannot give from ``index``;
+    the reasons it cannot."""
+    errors: list[str] = []
+    own = row["anchor"]
+    if isinstance(own, str) and row["url"] is None:
+        name, _, kind = own.rpartition("|")
+        hits = [a for a in index.lookup(name, [kind]) if a.name == name]
+        if len(hits) == 1:
+            row["url"] = hits[0].url
+        else:
+            errors.append(_unresolved(own, hits))
+    owner = row["owner"]
+    if isinstance(owner, str) and row["owner_url"] is None:
+        hits = index.lookup(owner, _OWNER_KINDS[str(row["kind"])], prefer)
+        if len(hits) == 1:
+            row["owner_anchor"], row["owner_url"] = hits[0].id, hits[0].url
+        elif hits:
+            errors.append(_unresolved(owner, hits))
+    return errors
+
+
+def _unresolved(name: str, hits: list[Anchor]) -> str:
+    if not hits:
+        return f"{name}: no anchor"
+    return f"{name}: {len(hits)} definitions: {', '.join(a.url for a in hits)}"
+
+
+def run_anchors(args: argparse.Namespace) -> int:
+    if not args.browser_info.is_dir():
+        raise InputError(f"{args.browser_info.as_posix()}: not a directory")
+    all_anchors = read_anchors(args.browser_info)
+    if args.names:
+        index = Index(all_anchors)
+        found: list[tuple[str, Anchor]] = []
+        errors = 0
+        for name in args.names:
+            base, bar, kind = name.partition("|")
+            hits = index.lookup(base, [kind] if bar else args.kind, args.prefer)
+            if len(hits) == 1:
+                found.append((name, hits[0]))
+            else:
+                errors += 1
+                print(f"isar project anchors: {_unresolved(name, hits)}", file=sys.stderr)
+    else:
+        found = [(a.name, a) for a in all_anchors]
+        errors = 0
+    rows: list[dict[str, Cell]] = [
+        {"name": name, "kind": a.kind, "anchor": a.id, "url": a.url} for name, a in found
+    ]
+    table = Table(
+        "anchors",
+        "Anchors",
+        [
+            Column("name", "name"),
+            Column("kind", "kind"),
+            Column("anchor", "anchor"),
+            Column("url", "url"),
+        ],
+        rows,
+    )
+    RENDERERS[args.format]([table], sys.stdout)
+    return 1 if errors else 0
+
+
 def run_notation(args: argparse.Namespace) -> int:
     if (args.out is not None) != (args.write or args.check):
         raise InputError("--out goes with --write or --check")
@@ -925,6 +1029,7 @@ def run_notation(args: argparse.Namespace) -> int:
     found = _entities(project, external=True)
     found += _pinned(project, (w.file for w, _ in wanted.values()))
     pages = Pages()
+    index: Index | None = None  # read only when the sources leave an anchor open
     rows: list[dict[str, object]] = []
     errors: list[str] = []
     for key, (want, slots) in wanted.items():
@@ -939,6 +1044,9 @@ def run_notation(args: argparse.Namespace) -> int:
             errors.append(f"{where}: {key}: {err}")
             continue
         if args.browser_info is not None:
+            if (row["anchor"] and not row["url"]) or (row["owner"] and not row["owner_url"]):
+                index = index or Index(read_anchors(args.browser_info))
+                errors += [f"{where}: {key}: {m}" for m in _from_build(row, index, args.prefer)]
             errors += [
                 f"{where}: {key}: {m}" for m in _missing_anchors(row, args.browser_info, pages)
             ]
