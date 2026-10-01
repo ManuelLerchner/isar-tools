@@ -11,6 +11,13 @@
   sides, and the HTML anchors of the declaration and its owner. Other shapes fail with
   their location. With `--browser-info DIR`, every anchor must exist; with `--check`,
   the JSON in `--out` must be current.
+- `isar project anchors --browser-info DIR [NAME...]`: the anchors of a built HTML
+  presentation, HOL and library sessions included, listed or found by name (a dotted
+  suffix or `Theory.name`, with `|kind` or `--kind`). A name that matches several
+  definitions is an error listing them; `--prefer PREFIX` (repeatable, first is best)
+  keeps those on pages below a prefix. `project notation --browser-info` looks up
+  there the anchors the sources cannot give, such as an owner from HOL, and also takes
+  `--prefer`.
 
 ## 0.3.0 (2026-09-30)
 

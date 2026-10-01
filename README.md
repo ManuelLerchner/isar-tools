@@ -40,19 +40,20 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 
 ## Commands
 
-| Command                                  | What it does                                                                               |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `isar fmt [PATH...]`                     | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
-| `isar check [GROUP] [PATH...]`           | Report problems in ROOT files, proofs, syntax, symbols, docs, and locales                  |
-| `isar stats [VIEW] [PATH...]`            | Size, proof, and command statistics                                                        |
-| `isar stats build BUILD_LOG`             | Where theory elaboration time went in an `isabelle build -v` log                           |
-| `isar project sessions\|theories\|graph` | Sessions, theories, and the session or theory import graph; session layers                 |
-| `isar project hierarchy`                 | Class and locale declarations: parents, parameters, assumptions                            |
-| `isar project instances`                 | Class instances and locale interpretations, with their class or locale                     |
-| `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
-| `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
-| `isar project notation TOML`             | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
-| `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
+| Command                                   | What it does                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `isar fmt [PATH...]`                      | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
+| `isar check [GROUP] [PATH...]`            | Report problems in ROOT files, proofs, syntax, symbols, docs, and locales                  |
+| `isar stats [VIEW] [PATH...]`             | Size, proof, and command statistics                                                        |
+| `isar stats build BUILD_LOG`              | Where theory elaboration time went in an `isabelle build -v` log                           |
+| `isar project sessions\|theories\|graph`  | Sessions, theories, and the session or theory import graph; session layers                 |
+| `isar project hierarchy`                  | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project instances`                  | Class instances and locale interpretations, with their class or locale                     |
+| `isar project names`                      | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
+| `isar project extract NAME...`            | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
+| `isar project notation TOML`              | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
+| `isar project anchors --browser-info DIR` | Anchors of a built HTML presentation, HOL included, by name                                |
+| `isar symbols normalize PATH...`          | Rewrite symbols as `\<name>`, or as Unicode                                                |
 
 A path is a project directory, read like `isabelle build -D` (its `ROOT`, and
 `ROOTS` recursively), or a `.thy` file. Commands that read a project default to the current
@@ -304,6 +305,32 @@ a `binder` or `structure` mixfix, fails with its location; so does a mixfix
 with more `_` slots than `args`, and an abbreviation that is not one
 `lhs \<equiv> rhs` equation. Notation added later with the `notation` command
 is not read. Nothing is written while any entry fails.
+
+With `--browser-info`, an anchor the sources cannot give is looked up in the
+build, as `project anchors` does: that of a theory no session owns, and that of
+an owner the project does not declare (`context order begin` gives HOL's
+`order`). `--prefer` chooses between rival definitions there.
+
+### Anchors in a build
+
+```sh
+isar project anchors --browser-info browser_info --format json      # every anchor
+isar project anchors --browser-info browser_info lfp "order|locale" # by name
+isar project anchors --browser-info browser_info --kind fact --kind thm sound \
+  --prefer MyChapter/ --prefer HOL/HOL/
+```
+
+`project names` gives the anchors of the project from its sources. A build
+also holds those of HOL and of every library session it rendered. A NAME is any
+dotted suffix of an anchor (`loc.name`, `name`), or `Theory.name` for a member
+of a locale or type when no suffix matches, with `|kind` or `--kind` (tried in
+order) to choose the kind. The ids of one definition count once: a lemma's
+`fact` and `thm`, a class's `locale` and `class`, and `T.c.x` and
+`T.c_class.x`. A copy of another session's theory (`Owner.Theory.html`) is
+skipped. A name that matches several definitions, such as a constant two
+locales declare or a fact an interpretation copies, is an error that lists
+them; `--prefer PREFIX` (repeatable, first is best) keeps the definitions on
+pages below the first prefix that has any.
 
 ### Statistics
 

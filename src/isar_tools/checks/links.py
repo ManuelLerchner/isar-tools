@@ -46,7 +46,7 @@ LINK_SUFFIXES = frozenset({".html", ".htm", ".md", ".markdown"})
 _LINK = re.compile(
     r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')|\]\(\s*<?([^)\s>]+)|<(\w+://[^>\s]+)>"""
 )
-_ANCHOR = re.compile(r"(?P<name>[^|]+)\|(?P<kind>[a-z_]+)")
+ANCHOR_ID = re.compile(r"(?P<name>[^|]+)\|(?P<kind>[a-z_]+)")
 
 
 @dataclass(frozen=True)
@@ -148,7 +148,7 @@ def check_sources(
     findings: list[Finding] = []
     for link in links(text):
         url, fragment = urldefrag(link.target)
-        m = _ANCHOR.fullmatch(unquote(fragment))
+        m = ANCHOR_ID.fullmatch(unquote(fragment))
         if m is None or not url.endswith(".html"):
             continue
         # A session-qualified page (`S.Theory.html`) holds the theory's own ids.
