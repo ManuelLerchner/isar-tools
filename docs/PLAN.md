@@ -271,6 +271,9 @@ data, for figures such as Voblint's domain tree) and `isar project extract`
 (declaration source by name, with a manifest drift check replacing Voblint's
 `snippets.py`). Since 0.3.0 also `isar project instances`, `graph --layers`, and
 the check groups `retired`, `prose`, and `links`, ported from Voblint's scripts.
+Since 0.4.0 also `isar project notation` (a notation table read off the
+declarations) and `isar project anchors` (anchors of a built HTML presentation),
+replacing Voblint's `notation.py` lookup and its anchor index.
 
 ## 13. Design principles
 
