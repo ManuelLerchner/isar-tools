@@ -51,6 +51,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | `isar project instances`                 | Class instances and locale interpretations, with their class or locale                     |
 | `isar project names`                     | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
 | `isar project extract NAME...`           | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
+| `isar project notation TOML`             | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
 | `isar symbols normalize PATH...`         | Rewrite symbols as `\<name>`, or as Unicode                                                |
 
 A path is a project directory, read like `isabelle build -D` (its `ROOT`, and
@@ -240,6 +241,69 @@ file = "~~/src/HOL/Orderings.thy"   # Isabelle's own theories, below $ISABELLE_H
 A `~~/` file is read below the `ISABELLE_HOME` environment variable and printed
 back as `(* ~~/src/HOL/Orderings.thy *)`; without the variable, such entries are
 skipped with a note.
+
+### Notation
+
+```sh
+isar project notation notation.toml                                  # JSON to stdout
+isar project notation notation.toml --out gen/notation.json --write
+isar project notation notation.toml --out gen/notation.json --check  # diff; exit 1 on drift
+isar project notation notation.toml --browser-info browser_info      # every anchor must exist
+```
+
+A document that explains a formalization shows its symbols, and a hand-typed
+table of them drifts from the theories. The manifest names the declarations and
+the argument names to show; the rest is read off each declaration:
+
+```toml
+[notation.widen]
+args = ["a", "b"]                   # filled into the mixfix's _ slots, the rest applied after
+reads = "a widened by b"            # anything else is ignored: keep your prose here
+[notation.step]
+name = "walk.step"                  # a NAME as extract takes it; default: the key
+args = ["x", "y"]
+[notation."walk.reach"]
+file = "src/Walk.thy"               # choose between declarations of the same name
+```
+
+For `fixes widen :: ... (infixl "\<nabla>" 65)` in a class, the entry is
+
+```json
+{
+  "key": "widen",
+  "name": "Lattice.widening_class.widen",
+  "kind": "class_parameter",
+  "command": "fixes",
+  "scope": "global",
+  "owner": "widening",
+  "symbol": "a \\<nabla> b",
+  "unicode": "a ∇ b",
+  "printed": true,
+  ...
+}
+```
+
+with also `theory`, `session`, `path`, `line`, `mixfix` (as written),
+`notation` (its template, `_ \<nabla> _` for an infix), `args`, `mode`
+(`input` or `output` of an abbreviation), `expansion` (an abbreviation's `lhs`
+and `rhs`), and the HTML anchors `anchor`, `url`, `owner_anchor`, and
+`owner_url`, as `project names` gives them. `kind` is the shape:
+
+| `kind`                | Declaration                                                                     | `scope`    |
+| --------------------- | ------------------------------------------------------------------------------- | ---------- |
+| `constant`            | `consts`, `definition`, `abbreviation`, `fun`, `inductive`, ... at theory level | `global`   |
+| `class_parameter`     | `fixes` of a class                                                              | `global`   |
+| `record_field`        | a field of a record                                                             | `global`   |
+| `locale_parameter`    | `fixes` or `for` of a locale; it has no anchor of its own, its locale has       | the locale |
+| `locale_abbreviation` | `abbreviation` inside a locale or class, also via `context`                     | the locale |
+
+Isabelle never prints an `abbreviation (input)` back, so its `printed` is
+false. Any other declaration, such as a constant defined inside a locale (whose
+notation outside it takes the locale's parameters), a datatype constructor, or
+a `binder` or `structure` mixfix, fails with its location; so does a mixfix
+with more `_` slots than `args`, and an abbreviation that is not one
+`lhs \<equiv> rhs` equation. Notation added later with the `notation` command
+is not read. Nothing is written while any entry fails.
 
 ### Statistics
 

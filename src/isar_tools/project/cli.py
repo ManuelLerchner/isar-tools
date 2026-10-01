@@ -10,8 +10,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
+from isar_tools.checks.links import Pages
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
 from isar_tools.project.names import (
@@ -27,6 +28,7 @@ from isar_tools.project.names import (
     matches,
     source,
 )
+from isar_tools.project.notation import NotationError, display, expansion, fill, shape, template
 from isar_tools.project.workspace import InputError, add_include_option, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
@@ -181,6 +183,34 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     add_include_option(extract)
     add_color_option(extract)
     extract.set_defaults(func=run_extract)
+    notation = views.add_parser(
+        "notation",
+        help="the symbols declarations introduce, as JSON",
+        description="Resolve the declarations a TOML manifest lists ([notation.KEY] with "
+        "optional `name`, `args`, and `file`) and print, as JSON, each one's shape, scope, "
+        "location, mixfix, the symbol its mixfix writes with the `_` slots filled by `args`, "
+        "the print mode, an abbreviation's two sides, and its HTML anchor. Supported are "
+        "theory-level constants, class parameters, record fields, locale parameters, and "
+        "abbreviations inside a locale or class; any other declaration is an error with its "
+        "location. With --out and --check, exit 1 when the stored JSON differs.",
+    )
+    notation.add_argument("manifest", type=Path, metavar="TOML", help="the manifest")
+    notation.add_argument(
+        "--project", type=Path, default=Path(), metavar="DIR", help="project directory"
+    )
+    notation.add_argument(
+        "--browser-info",
+        type=Path,
+        metavar="DIR",
+        help="Isabelle's HTML presentation: every anchor must exist on its page",
+    )
+    notation.add_argument("--out", type=Path, metavar="JSON", help="file for --write and --check")
+    mode = notation.add_mutually_exclusive_group()
+    mode.add_argument("--write", action="store_true", help="write --out")
+    mode.add_argument("--check", action="store_true", help="exit 1 if --out differs")
+    add_include_option(notation)
+    add_color_option(notation)
+    notation.set_defaults(func=run_notation)
 
 
 def _load(args: argparse.Namespace) -> Project:
@@ -669,22 +699,25 @@ def _entry(key: str, meta: object, project: Path) -> _Wanted | str:
     )
 
 
-def _manifest(path: Path, project: Path) -> dict[str, _Wanted]:
-    """The entries of a manifest, by key. An entry pinned to Isabelle's own
-    sources is skipped, with a note, when ISABELLE_HOME is not set."""
+def _manifest(
+    path: Path, project: Path, table: str = "snippets", view: str = "extract"
+) -> dict[str, tuple[_Wanted, dict[str, object]]]:
+    """The entries of a manifest's ``[table]``, by key, with their fields. An
+    entry pinned to Isabelle's own sources is skipped, with a note, when
+    ISABELLE_HOME is not set."""
     try:
-        table = tomllib.loads(read_source(path)).get("snippets", {})
+        entries = tomllib.loads(read_source(path)).get(table, {})
     except (OSError, ValueError) as err:  # TOMLDecodeError and UnicodeDecodeError
         raise InputError(f"{path.as_posix()}: {err}") from err
-    if not isinstance(table, dict):
-        raise InputError(f"{path.as_posix()}: [snippets] must be a table")
-    wanted: dict[str, _Wanted] = {}
-    for key, meta in sorted(cast(dict[str, object], table).items()):
+    if not isinstance(entries, dict):
+        raise InputError(f"{path.as_posix()}: [{table}] must be a table")
+    wanted: dict[str, tuple[_Wanted, dict[str, object]]] = {}
+    for key, meta in sorted(cast(dict[str, object], entries).items()):
         entry = _entry(key, meta, project)
         if isinstance(entry, str):
-            print(f"isar project extract: note: {entry}", file=sys.stderr)
+            print(f"isar project {view}: note: {entry}", file=sys.stderr)
         else:
-            wanted[key] = entry
+            wanted[key] = (entry, cast(dict[str, object], meta) if isinstance(meta, dict) else {})
     return wanted
 
 
@@ -709,7 +742,7 @@ def run_extract(args: argparse.Namespace) -> int:
     if args.manifest is None and not args.names:
         raise InputError("give a NAME or --manifest")
     wanted = (
-        _manifest(args.manifest, args.project)
+        {key: want for key, (want, _) in _manifest(args.manifest, args.project).items()}
         if args.manifest is not None
         else {name: _Wanted(name, None, None) for name in args.names}
     )
@@ -796,6 +829,140 @@ def _statement(found: _Found) -> str:
     if found.theory is None or found.entity.derived_from:
         return ""
     return source(found.theory, found.entity, statement=True)
+
+
+# The kinds of declaration that own a member of each shape.
+_OWNER_KINDS = {
+    "class_parameter": ("class",),
+    "record_field": ("type",),
+    "locale_parameter": ("locale",),
+    "locale_abbreviation": ("locale", "class"),
+}
+
+
+def _owner(found: list[_Found], of: _Found, kind: str, owner: str) -> _Found | None:
+    """The class, record, or locale ``owner`` that declares ``of``; None if
+    neither the project nor a -d directory declares it (Isabelle's own)."""
+    hits = [f for f in found if f.entity.kind in _OWNER_KINDS[kind] and matches(f.entity, owner)]
+    hits = [f for f in hits if not f.external] or hits
+    hits = [f for f in hits if f.entity.theory == of.entity.theory] or hits
+    if len(hits) > 1:
+        where = ", ".join(f"{_display(f.entity.path)}:{f.entity.line}" for f in hits)
+        raise NotationError(f"{owner} is ambiguous: {where}")
+    return hits[0] if hits else None
+
+
+def _notation(key: str, of: _Found, args: list[str], found: list[_Found]) -> dict[str, object]:
+    e = of.entity
+    kind = shape(e)
+    written = template(e)
+    symbol = fill(written, e.name, args)
+    sides = expansion(_statement(of)) if e.command == "abbreviation" else None
+    owner = _owner(found, of, kind.kind, kind.owner) if kind.owner else None
+    return {
+        "key": key,
+        "name": e.qualified,
+        "kind": kind.kind,
+        "command": e.command,
+        "scope": kind.scope,
+        "owner": kind.owner or None,
+        "theory": e.theory,
+        "session": of.session_name,
+        "path": _display(e.path),
+        "line": e.line,
+        "mixfix": e.mixfix or None,
+        "notation": written or None,
+        "args": args,
+        "symbol": symbol,
+        "unicode": display(symbol),
+        "mode": e.mode or None,
+        "printed": e.mode != "input",
+        "expansion": {"lhs": sides[0], "rhs": sides[1]} if sides else None,
+        "anchor": anchor(e) or None,
+        "url": _url(of) or None,
+        "owner_anchor": (anchor(owner.entity) or None) if owner else None,
+        "owner_url": (_url(owner) or None) if owner else None,
+    }
+
+
+def _args(key: str, fields: dict[str, object]) -> list[str]:
+    value = fields.get("args", [])
+    if not isinstance(value, list) or not all(
+        isinstance(a, str) for a in cast(list[object], value)
+    ):
+        raise InputError(f"{key}: args must be a list of strings")
+    return cast(list[str], value)
+
+
+def _missing_anchors(row: dict[str, object], browser_info: Path, pages: Pages) -> list[str]:
+    """The anchors of ``row`` that the built presentation lacks."""
+    missing: list[str] = []
+    for field in ("url", "owner_url"):
+        url = row[field]
+        if not isinstance(url, str):
+            continue
+        page, _, fragment = url.partition("#")
+        path = browser_info / unquote(page)
+        if not path.is_file():
+            missing.append(f"no page {page} in {display_path(browser_info)}")
+        elif unquote(fragment) not in pages.ids(path):
+            missing.append(f"{page} has no anchor {unquote(fragment)}")
+    return missing
+
+
+def run_notation(args: argparse.Namespace) -> int:
+    if (args.out is not None) != (args.write or args.check):
+        raise InputError("--out goes with --write or --check")
+    if args.browser_info is not None and not args.browser_info.is_dir():
+        raise InputError(f"{args.browser_info.as_posix()}: not a directory")
+    wanted = {
+        key: (want, _args(key, fields))
+        for key, (want, fields) in _manifest(
+            args.manifest, args.project, "notation", "notation"
+        ).items()
+    }
+    project = _load_dir(args.project, args.include)
+    found = _entities(project, external=True)
+    found += _pinned(project, (w.file for w, _ in wanted.values()))
+    pages = Pages()
+    rows: list[dict[str, object]] = []
+    errors: list[str] = []
+    for key, (want, slots) in wanted.items():
+        result = _lookup(found, want.name, want.file)
+        if isinstance(result, str):
+            errors.append(result if want.name == key else f"{key}: {result}")
+            continue
+        where = f"{_display(result.entity.path)}:{result.entity.line}"
+        try:
+            row = _notation(key, result, slots, found)
+        except NotationError as err:
+            errors.append(f"{where}: {key}: {err}")
+            continue
+        if args.browser_info is not None:
+            errors += [
+                f"{where}: {key}: {m}" for m in _missing_anchors(row, args.browser_info, pages)
+            ]
+        rows.append(row)
+    for error in errors:
+        print(f"isar project notation: {error}", file=sys.stderr)
+    if errors:
+        return 1
+    text = json.dumps({"notation": rows}, indent=2, ensure_ascii=False) + "\n"
+    if args.out is None:
+        sys.stdout.write(text)
+        return 0
+    stored = read_source(args.out) if args.out.is_file() else ""
+    if stored == text:
+        return 0
+    if args.check:
+        style = Style.for_stream(args.color, sys.stdout)
+        write_diff(stored, text, display_path(args.out), sys.stdout, style)
+        print(f"{display_path(args.out)} differs from the theories", file=sys.stderr)
+        return 1
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    write_source(args.out, text)
+    print(f"wrote {display_path(args.out)}")
+    return 0
 
 
 def names_table(

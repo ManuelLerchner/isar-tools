@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `isar project notation TOML`: the symbols a project's declarations introduce, as
+  JSON. A manifest lists declarations (`[notation.KEY]` with `name`, `args`, `file`);
+  for each, the output gives its shape (theory-level constant, class parameter, record
+  field, locale parameter, or abbreviation in a locale), scope, location, mixfix, the
+  `symbol` its mixfix writes with the `_` slots filled by `args` (and as `unicode`),
+  the print mode (`abbreviation (input)` is never printed back), an abbreviation's two
+  sides, and the HTML anchors of the declaration and its owner. Other shapes fail with
+  their location. With `--browser-info DIR`, every anchor must exist; with `--check`,
+  the JSON in `--out` must be current.
+
 ## 0.3.0 (2026-09-30)
 
 - `isar project names` lists the constructors, discriminators, and selectors of a

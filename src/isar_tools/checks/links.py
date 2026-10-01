@@ -62,7 +62,7 @@ def links(text: str) -> Iterator[Link]:
         yield Link(html.unescape(m.group(index)), m.start(index))
 
 
-class _Pages:
+class Pages:
     """Anchor ids of built pages, read once each."""
 
     def __init__(self) -> None:
@@ -102,7 +102,7 @@ def _in_build(
 
 
 def check_built(
-    path: Path, text: str, browser_info: Path, bases: Iterable[str], pages: _Pages
+    path: Path, text: str, browser_info: Path, bases: Iterable[str], pages: Pages
 ) -> list[Finding]:
     lines = LineIndex(text)
     findings: list[Finding] = []
@@ -174,7 +174,7 @@ def check_links(
     """Findings for the links of ``files``: against the build in
     ``browser_info``, or, without one, against the declarations of
     ``projects``."""
-    pages = _Pages()
+    pages = Pages()
     declared: dict[tuple[str, str], list[str]] | None = None
     findings: list[Finding] = []
     for path in files:
