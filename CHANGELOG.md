@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-01)
 
 - `isar project notation TOML`: the symbols a project's declarations introduce, as
   JSON. A manifest lists declarations (`[notation.KEY]` with `name`, `args`, `file`);
