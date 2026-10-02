@@ -45,7 +45,7 @@ from isar_tools.project.hierarchy import (
 )
 from isar_tools.project.model import Project
 from isar_tools.project.workspace import NO_SESSION, SourceFile
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IDENTIFIER_RE, IGNORABLE, Kind, LineIndex, Token, tokenize
 from isar_tools.source.symbols import SYMBOL_RE, TO_ASCII
@@ -300,7 +300,7 @@ class _Checker:
         return self._visible[path]
 
     def read(self, path: Path, checked: bool) -> _Theory | None:
-        theory = parse_theory(read_source(path), self.project.keywords_for(path))
+        theory = parse_theory(read_lenient(path), self.project.keywords_for(path))
         session = self.project.session_of(path)
         name, external = (session.name, session.external) if session else (NO_SESSION, False)
         for decl in declarations(theory, path):

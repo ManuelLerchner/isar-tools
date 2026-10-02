@@ -37,7 +37,7 @@ from isar_tools.project.names import (
     interpretations,
     interpreted,
 )
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient, read_source
 from isar_tools.source.lexer import LineIndex
 from isar_tools.source.theory import parse_theory
 
@@ -128,7 +128,7 @@ def declared_anchors(project: Project) -> dict[tuple[str, str], list[str]]:
     interps: list[Interpretation] = []
     for session in project.sessions.values():
         for name, path in project.owned_theories(session).items():
-            theory = parse_theory(read_source(path), project.keywords_for(path))
+            theory = parse_theory(read_lenient(path), project.keywords_for(path))
             found += entities(theory, name, path, derived=True)
             interps += interpretations(theory, name, path)
     found += [e for i in interps for e in interpreted(found, i)]

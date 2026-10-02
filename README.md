@@ -14,14 +14,28 @@
 [license-badge]: https://img.shields.io/github/license/ManuelLerchner/isar-tools?style=flat-square
 [license]: https://github.com/ManuelLerchner/isar-tools/blob/main/LICENSE
 
-Source tooling for Isabelle/Isar projects: a formatter, project and source
-checks, and statistics. Pure Python. Works on `.thy` and `ROOT` files without
-running Isabelle.
+Linting, formatting, and project analysis for Isabelle/Isar. Pure Python: it
+reads `.thy` and `ROOT` files the way `isabelle build` finds them, without
+running Isabelle, and answers in seconds.
 
 ![Terminal recording: isar stats prints session and theory tables for a small
 demo project, isar check reports an unfinished proof (sorry), isar fmt --diff
 indents a proof and removes trailing whitespace and extra blank lines, and isar
 project graph prints the theory import graph.](https://raw.githubusercontent.com/ManuelLerchner/isar-tools/main/docs/demo/demo.gif)
+
+## Why
+
+Isabelle checks that every proof goes through. It has nothing to say about a
+lemma no proof cites, an import another import already brings in, a constant
+written out next to the notation the project gave it, a locale assumption no
+proof uses, or a `sorry` left in a theory nobody builds. In a development of a
+few hundred theories these pile up, the build slows down, and reviewers check
+style by eye. Other languages have formatters, linters, and dead-code finders
+for this. Large Isabelle projects mostly have conventions in a README.
+
+isar-tools is that missing tooling: a formatter that only touches layout, about
+fifty checks, statistics, and views of a project's sessions, theories, and
+declarations. It fits a pre-commit hook or a CI job next to the build.
 
 Status: alpha. Published on PyPI and conda-forge and used by a real project;
 minor versions may still add commands and JSON columns. See [`CHANGELOG.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/CHANGELOG.md) and
@@ -43,7 +57,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | Command                                   | What it does                                                                               |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `isar fmt [PATH...]`                      | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
-| `isar check [GROUP] [PATH...]`            | Report problems in ROOT files, proofs, syntax, symbols, docs, and locales                  |
+| `isar check [GROUP] [PATH...]`            | Lint ROOT files and theories: proofs, notation, unused and redundant lemmas, and more      |
 | `isar stats [VIEW] [PATH...]`             | Size, proof, and command statistics                                                        |
 | `isar stats build BUILD_LOG`              | Where theory elaboration time went in an `isabelle build -v` log                           |
 | `isar project sessions\|theories\|graph`  | Sessions, theories, and the session or theory import graph; session layers                 |
@@ -63,7 +77,80 @@ Exit status: `0` success, `1` findings or differences, `2` invalid invocation or
 unreadable input. Data goes to stdout, diagnostics to stderr. JSON and CSV output
 use stable snake_case keys and are never coloured.
 
-### Formatting
+## Checks
+
+```sh
+isar check                           # groups project, proofs, and syntax
+isar check notation unused src/      # name more groups to run them
+isar check --ignore oops --format json
+```
+
+A tour, from [`docs/showcase/Tour.thy`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/showcase/Tour.thy):
+
+<!-- tour:begin -->
+
+```isabelle
+theory Tour
+  imports Base
+begin
+
+text \<open>A few findings of \<^verbatim>\<open>isar check\<close>.\<close>
+
+lemma join_comm: "a \<squnion>\<^sub>m b = b \<squnion>\<^sub>m a"
+  by (simp add: join_def)
+
+lemma join_comm_again: "x \<squnion>\<^sub>m y = y \<squnion>\<^sub>m x"
+  by (simp add:)
+
+lemma join_idem: "join a a = a"
+  apply (simp add: join_def)
+  done
+
+lemma join_bound: "a \<le> a \<squnion>\<^sub>m b"
+  sorry
+
+end
+```
+
+```console
+$ isar check proofs notation methods redundant Tour.thy
+Tour.thy:10:7: duplicate-lemma: join_comm_again states join_comm (Tour.thy:7) again
+Tour.thy:11:12: empty-modifier: add: lists nothing
+Tour.thy:13:19: spelled-out-notation: join is written out; its notation is _ \<squnion>\<^sub>m _
+Tour.thy:14:3: single-apply: one apply and done: write by
+Tour.thy:18:3: unfinished-proof: sorry leaves the goal unproved
+```
+
+<!-- tour:end -->
+
+<!-- groups:begin -->
+
+| Group                                                                                          | Codes                                                                                                                                                          | Runs       |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| [`project`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#project)     | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` | by default |
+| [`proofs`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#proofs)       | `unfinished-proof`, `oops`, `unclosed-proof`                                                                                                                   | by default |
+| [`syntax`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#syntax)       | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            | by default |
+| [`symbols`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#symbols)     | `non-ascii`                                                                                                                                                    | when named |
+| [`docs`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#docs)           | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
+| [`locales`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#locales)     | `locale-free-variable`                                                                                                                                         | when named |
+| [`notation`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#notation)   | `spelled-out-notation`, `spelled-out-abbreviation`                                                                                                             | when named |
+| [`unused`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#unused)       | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
+| [`redundant`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#redundant) | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
+| [`hygiene`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#hygiene)     | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
+| [`leftovers`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#leftovers) | `proof-search`, `counterexample-search`, `goal-reordering`, `backtracking`, `diagnostic-command`                                                               | when named |
+| [`methods`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#methods)     | `empty-modifier`, `duplicate-fact`, `single-apply`                                                                                                             | when named |
+| [`retired`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#retired)     | `retired-identifier`                                                                                                                                           | when named |
+| [`prose`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#prose)         | `prose-reference`, `prose-underscore`                                                                                                                          | when named |
+| [`links`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md#links)         | `broken-link`, `broken-anchor`, `anchor-name`                                                                                                                  | when named |
+
+<!-- groups:end -->
+
+[`docs/CHECKS.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/CHECKS.md) explains every group and shows an example
+of every code, generated from the [showcase project](https://github.com/ManuelLerchner/isar-tools/tree/main/docs/showcase). A comment
+`(* isar-ignore: CODE *)` silences a finding on its line, or on the next line
+when it stands alone.
+
+## Formatting
 
 ```sh
 isar fmt                          # format every .thy below the current directory
@@ -90,288 +177,20 @@ pre-commit:
       stage_fixed: true
 ```
 
-### Checks
+## Project views
 
 ```sh
-isar check                        # groups project, proofs, and syntax
-isar check symbols src/           # non-ASCII characters outside comments
-isar check docs src/              # theories, headings, locales, classes without a text block
-isar check leftovers hygiene src/ # sledgehammer, thm, nitpick without expect; tabs, CRs
-isar check retired --retired-file retired.txt src/   # removed names that came back
-isar check prose src/             # names cited in text blocks; raw _ that LaTeX rejects
-isar check links site/index.html --browser-info browser_info   # links into HTML theories
-isar check locales -d ~/afp/thys  # free variables in locale headers
-isar check notation src/          # constants written out despite their notation
-isar check methods src/           # (simp add:), facts listed twice
-isar check unused src/            # lemmas nothing cites, imports nothing needs
-isar check redundant src/         # lemmas another lemma states already
-isar check --ignore oops --format json
+isar project graph --layers          # sessions as strata
+isar project names --format markdown > NAMES.md
+isar project extract --manifest snippets.toml --out generated/ --check
+isar project notation notation.toml --out gen/notation.json --check
 ```
 
-| Group       | Codes                                                                                                                                                          |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`   | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` |
-| `proofs`    | `unfinished-proof` (`sorry`, `\<proof>`), `oops`, `unclosed-proof`                                                                                             |
-| `syntax`    | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            |
-| `symbols`   | `non-ascii` (opt-in)                                                                                                                                           |
-| `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
-| `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
-| `notation`  | `spelled-out-notation`, `spelled-out-abbreviation` (opt-in, heuristic)                                                                                         |
-| `unused`    | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption` (opt-in, heuristic)                                                                   |
-| `redundant` | `duplicate-lemma`, `subsumed-lemma` (opt-in, heuristic)                                                                                                        |
-| `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
-| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command`, `goal-reordering`, `backtracking` (opt-in)                                                      |
-| `methods`   | `empty-modifier`, `duplicate-fact`, `single-apply` (opt-in)                                                                                                    |
-| `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
-| `prose`     | `prose-reference`, `prose-underscore` (opt-in)                                                                                                                 |
-| `links`     | `broken-link`, `broken-anchor`, `anchor-name` (opt-in)                                                                                                         |
+[`docs/PROJECT.md`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/PROJECT.md) describes session layers, names, quoting
+declarations, notation tables, anchors of a build, and commands of other
+sessions (`-d`).
 
-Project checks run for directory arguments only. `isar check --help` describes
-every code.
-
-A comment `(* isar-ignore *)` after code silences every finding on its line;
-alone on a line, it silences the next line. `(* isar-ignore: oops, tab *)`
-silences only those codes. This works in theories and `ROOT` files.
-
-`locales` is heuristic. Inside the terms of a `locale` or `context` header,
-Isabelle reads an unknown identifier as a free variable and generalizes over
-it, so an assumption citing a deleted or misspelt constant still builds. The
-check reports identifiers that are no parameter of the header (its `fixes`,
-`for` clause, `defines`, or those of the locales it extends, resolved through
-imports), not bound in the term, and not used anywhere else in the project or
-in the `-d` theories it imports. Only names of at least four characters with an
-underscore (or `\<^sub>`) are reported; `--allow NAME` (repeatable) accepts a
-name. Inner syntax is approximated lexically: see `isar_tools/checks/locales.py`.
-
-`notation` is heuristic too. Once a project gives a constant a short form, by a
-mixfix on its declaration, a `notation` command, or `adhoc_overloading g == f`,
-a later term that writes `f x` is reported. A short form in a bundle holds
-where the bundle is open (`unbundle`, `includes`, `including`); one in a
-locale, in that locale and those extending it; one in an anonymous `context`,
-in that block. A mixfix needs its arguments, so only a name that heads an
-application with enough of them is reported; an infix (`(op)`) or a notation
-without slots is reported anywhere. Bound and fixed variables, record field
-updates, and a declaration's own equations are skipped. `--allow NAME` accepts
-a constant. A `spelled-out-abbreviation` is a term that is the right-hand side
-of an `abbreviation`. See `isar_tools/checks/notation.py`.
-
-`unused` reports a named fact no other text of the project cites: by name,
-qualified (`T.foo`, `q.foo` of an interpretation), with arguments
-(`foo(2)`, `foo[OF ...]`), or in a document antiquotation (`@{thm foo}`). A
-fact with an attribute that registers it (`[simp]`, `[intro]`, a
-`named_theorems` collection) is used without its name and is never reported.
-Main results cited only outside the project take `--allow NAME` or an
-`isar-ignore` comment. A `redundant-import` is reached through another import
-of the same theory already. An `unused-import` adds theories of which the
-importing theory names nothing; a theory with instances, notation, ML, setup,
-or a fact with a registering attribute may be needed without a name and keeps
-its import. An `unused-assumption` is a named `assumes` of a locale or class
-that no proof cites, while nothing cites its assumptions as a whole
-(`loc_axioms`, `loc_def`, `loc.axioms`): the locale may assume less than it
-says. Unnamed assumptions are not checked.
-
-`retired` reports identifiers the project removed on purpose, listed in
-`check.retired`, in the file `check.retired-file` names (one per line, `#`
-comments), or with `--retired NAME`. Isabelle reads an unknown lowercase name in
-an assumption or a theorem statement as a free variable, so a locale whose
-assumption cites a deleted constant still builds and silently assumes less.
-Matching is whole-word outside `(* *)` comments, and `foo_def`, `foo_def_raw`,
-`foo_axioms`, and `foo_axioms_def` count as `foo`.
-
-`prose` reads document text (`text`, `section`, ...). Isabelle checks
-`\<^const>\<open>f\<close>`, but not a plain nested cartouche such as
-`\<open>f_def\<close>`, which is how prose usually cites a lemma. A
-`prose-reference` is such a cartouche naming nothing the project or its `-d`
-directories declare (derived facts included) or use in their formal text;
-only names of at least four characters with an underscore are read, and
-`--allow NAME` accepts one. A `prose-underscore` is a raw `_` in the outer
-prose, which reaches LaTeX unescaped and fails the document build.
-
-`links` reads `.html` and `.md` files for links into Isabelle's HTML
-presentation, where each definition has an anchor such as
-`Theory.loc.name|fact`. With `--browser-info DIR`, a link into DIR (relative to
-the file, below a `--link-base URL`, or starting with a chapter directory of
-DIR) must name an existing page and anchor. Without a build, an anchor is
-compared with the declarations: it must start with its page's theory, and a
-name the theory declares once must carry its scope (`Theory.loc.name`, not
-`Theory.name`). `project names --format json` gives each declaration's `anchor`
-and its `url` below browser_info.
-
-### Commands of other sessions
-
-Whether a word is an Isar command depends on the theories a file imports. The
-built-in table covers Pure and HOL, commands declared in the theory headers of
-the project are found automatically, and a generated table covers the commands
-of AFP entries (such as `derive` from `Deriving`), so no AFP checkout is needed.
-For commands of other projects, or of an AFP newer than the table, pass their
-directory with `-d`, as with `isabelle build -d`:
-
-```sh
-isar check -d ~/afp/thys .
-isar project hierarchy --root numeric_domain -d ~/afp/thys --format json
-```
-
-### Session layers
-
-```sh
-isar project graph --layers                  # layer, session, and what it rests on
-isar project graph --layers --format dot     # one rank per layer
-```
-
-A session rests on its parent, its `sessions` entries, and the sessions whose
-theories its theories import. Its layer is one above the highest of those
-(1 if it rests on no known session), so a drawing of the development as strata
-follows the ROOT files and imports. Sessions of `-d` directories that the
-project rests on are included; JSON adds `layers` and the `imports` edges.
-
-### Names
-
-```sh
-isar project names --kind locale                  # every locale, as Theory.locale
-isar project names --format markdown > NAMES.md   # an index with docstrings
-isar project names --name Foo.loc.bar_lemma       # exit 1 if no such declaration
-isar project names --derived                      # also f_def, f.simps, L.intro, q.fact
-isar project names "$ISABELLE_HOME/src/HOL/Orderings.thy"   # one theory file alone
-isar project names --kind fact --statements --format json   # each lemma's statement
-```
-
-Names are qualified as Isabelle renders them: a lemma inside `context loc` is
-`Theory.loc.name`, and a datatype's constructors and selectors and a record's
-fields are named in their type (`Theory.t.C`). With `--name`, a qualifier
-naming the wrong scope does not match, and the error suggests the names that
-exist, so links into rendered theories can be checked without building them.
-JSON and CSV rows carry a constant's `mixfix`, its `notation` (the first string
-of the mixfix), and the syntax `mode` of `abbreviation (input)`, for constants,
-record fields, constructors, and locale parameters, `for` clause included. The docstring is a `text` block
-directly before the declaration.
-
-### Quoting declarations
-
-```sh
-isar project extract combine_env locale_name.lemma_name
-isar project extract --statement lemma_name     # without the proof
-isar project extract "sign :: numeric_domain" sign_tf   # an instance, an interpretation
-isar project extract --manifest snippets.toml --out generated/ --write   # regenerate
-isar project extract --manifest snippets.toml --out generated/ --check   # diff; exit 1 on drift
-```
-
-A name is `name`, `locale.name`, `Theory.name`, or `Theory.locale.name`, a
-class instance `type :: class`, or the qualifier of an interpretation
-(`q` for `interpretation q: loc`), and must identify one declaration. The
-project's declarations come first, then those of `-d` directories; a
-declaration hides the parameters, fields, and constructors that others have of
-the same name; its source is the command and, for a goal, its
-proof. With `--statement` it is the statement alone: no proof, and no `begin` of
-a locale, class, or instantiation. A manifest lists snippets as TOML tables,
-each written to `KEY.thy`, so a document that quotes a definition fails its
-check when the definition changes or is renamed:
-
-```toml
-[snippets.combine_env]
-why = "shown in chapter 3"     # free text, ignored
-[snippets.succ_pos]
-file = "src/B.thy"             # choose between declarations of the same name
-proof = true                   # keep the proof, also with --statement
-[snippets.succ_pos_short]
-name = "B.succ_pos"            # what to extract, if not the key
-[snippets.order]
-file = "~~/src/HOL/Orderings.thy"   # Isabelle's own theories, below $ISABELLE_HOME
-```
-
-A `~~/` file is read below the `ISABELLE_HOME` environment variable and printed
-back as `(* ~~/src/HOL/Orderings.thy *)`; without the variable, such entries are
-skipped with a note.
-
-### Notation
-
-```sh
-isar project notation notation.toml                                  # JSON to stdout
-isar project notation notation.toml --out gen/notation.json --write
-isar project notation notation.toml --out gen/notation.json --check  # diff; exit 1 on drift
-isar project notation notation.toml --browser-info browser_info      # every anchor must exist
-```
-
-A document that explains a formalization shows its symbols, and a hand-typed
-table of them drifts from the theories. The manifest names the declarations and
-the argument names to show; the rest is read off each declaration:
-
-```toml
-[notation.widen]
-args = ["a", "b"]                   # filled into the mixfix's _ slots, the rest applied after
-reads = "a widened by b"            # anything else is ignored: keep your prose here
-[notation.step]
-name = "walk.step"                  # a NAME as extract takes it; default: the key
-args = ["x", "y"]
-[notation."walk.reach"]
-file = "src/Walk.thy"               # choose between declarations of the same name
-```
-
-For `fixes widen :: ... (infixl "\<nabla>" 65)` in a class, the entry is
-
-```json
-{
-  "key": "widen",
-  "name": "Lattice.widening_class.widen",
-  "kind": "class_parameter",
-  "command": "fixes",
-  "scope": "global",
-  "owner": "widening",
-  "symbol": "a \\<nabla> b",
-  "unicode": "a ∇ b",
-  "printed": true,
-  ...
-}
-```
-
-with also `theory`, `session`, `path`, `line`, `mixfix` (as written),
-`notation` (its template, `_ \<nabla> _` for an infix), `args`, `mode`
-(`input` or `output` of an abbreviation), `expansion` (an abbreviation's `lhs`
-and `rhs`), and the HTML anchors `anchor`, `url`, `owner_anchor`, and
-`owner_url`, as `project names` gives them. `kind` is the shape:
-
-| `kind`                | Declaration                                                                     | `scope`    |
-| --------------------- | ------------------------------------------------------------------------------- | ---------- |
-| `constant`            | `consts`, `definition`, `abbreviation`, `fun`, `inductive`, ... at theory level | `global`   |
-| `class_parameter`     | `fixes` of a class                                                              | `global`   |
-| `record_field`        | a field of a record                                                             | `global`   |
-| `locale_parameter`    | `fixes` or `for` of a locale; it has no anchor of its own, its locale has       | the locale |
-| `locale_abbreviation` | `abbreviation` inside a locale or class, also via `context`                     | the locale |
-
-Isabelle never prints an `abbreviation (input)` back, so its `printed` is
-false. Any other declaration, such as a constant defined inside a locale (whose
-notation outside it takes the locale's parameters), a datatype constructor, or
-a `binder` or `structure` mixfix, fails with its location; so does a mixfix
-with more `_` slots than `args`, and an abbreviation that is not one
-`lhs \<equiv> rhs` equation. Notation added later with the `notation` command
-is not read. Nothing is written while any entry fails.
-
-With `--browser-info`, an anchor the sources cannot give is looked up in the
-build, as `project anchors` does: that of a theory no session owns, and that of
-an owner the project does not declare (`context order begin` gives HOL's
-`order`). `--prefer` chooses between rival definitions there.
-
-### Anchors in a build
-
-```sh
-isar project anchors --browser-info browser_info --format json      # every anchor
-isar project anchors --browser-info browser_info lfp "order|locale" # by name
-isar project anchors --browser-info browser_info --kind fact --kind thm sound \
-  --prefer MyChapter/ --prefer HOL/HOL/
-```
-
-`project names` gives the anchors of the project from its sources. A build
-also holds those of HOL and of every library session it rendered. A NAME is any
-dotted suffix of an anchor (`loc.name`, `name`), or `Theory.name` for a member
-of a locale or type when no suffix matches, with `|kind` or `--kind` (tried in
-order) to choose the kind. The ids of one definition count once: a lemma's
-`fact` and `thm`, a class's `locale` and `class`, and `T.c.x` and
-`T.c_class.x`. A copy of another session's theory (`Owner.Theory.html`) is
-skipped. A name that matches several definitions, such as a constant two
-locales declare or a fact an interpretation copies, is an error that lists
-them; `--prefer PREFIX` (repeatable, first is best) keeps the definitions on
-pages below the first prefix that has any.
-
-### Statistics
+## Statistics
 
 ```sh
 isar stats                               # sessions, then the largest theories
@@ -382,7 +201,7 @@ isar stats build build.log --budget HOL-Library=0
 isar stats build build.log --budget TD=8 --default-budget 0 --project .  # every other library: 0
 ```
 
-### Configuration
+## Configuration
 
 Options a project always wants go in `[tool.isar]` in `pyproject.toml`, or in an
 `isar.toml` (same keys, at the top level). The file is found by searching upward
@@ -440,6 +259,7 @@ pixi run lint
 pixi run isar --help
 pixi run demo                # re-record docs/demo/demo.gif with VHS
 pixi run demo-check          # run the demo commands without recording
+pixi run checks-doc          # regenerate docs/CHECKS.md and the README's check sections
 ISAR_CORPUS=~/afp/thys pixi run corpus   # integration tests over real projects
 ```
 

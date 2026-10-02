@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `docs/CHECKS.md` documents every check with an example, generated from the showcase
+  project in `docs/showcase` (`pixi run checks-doc`); a test fails when a code has no
+  example or the document is stale. The README is shorter and says why the tool
+  exists; the `isar project` details moved to `docs/PROJECT.md`.
+- Checks that read the whole project (`links`, `locales`, `prose`, and the new
+  groups) no longer stop at a theory that is not UTF-8.
 - `isar check leftovers` reports `defer` and `prefer` (`goal-reordering`) and `back`
   (`backtracking`); `isar check methods` reports `single-apply`, a goal proved by one
   `apply` and `done`, which `by` states in one step.

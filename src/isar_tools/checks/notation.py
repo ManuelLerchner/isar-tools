@@ -63,7 +63,7 @@ from isar_tools.project.names import Entity, entities
 from isar_tools.project.names import source as statement_source
 from isar_tools.project.notation import INFIX, NotationError, expansion, template
 from isar_tools.project.workspace import SourceFile
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IGNORABLE, Kind, Token, tokenize
 from isar_tools.source.symbols import encode
@@ -490,7 +490,7 @@ class _Checker:
             found = self.analysis(target) if target is not None else None
             if found is not None:
                 opened |= found.opened
-        theory = parse_theory(read_source(path), self.project.keywords_for(path))
+        theory = parse_theory(read_lenient(path), self.project.keywords_for(path))
         for decl in declarations(theory, path):
             extra = decl.sorts if decl.kind == "class" else []
             self.parents.setdefault(decl.name, set()).update(decl.parents, extra)

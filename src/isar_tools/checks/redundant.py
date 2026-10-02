@@ -39,7 +39,7 @@ from isar_tools.project.hierarchy import bracket_group, declarations
 from isar_tools.project.model import Project
 from isar_tools.project.names import entities
 from isar_tools.project.workspace import SourceFile
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient
 from isar_tools.source.lexer import Kind, LineIndex, Token
 from isar_tools.source.symbols import SYMBOL_RE
 from isar_tools.source.theory import Theory, parse_theory, significant, unquote
@@ -392,7 +392,7 @@ def check_redundant(sources: Iterable[SourceFile]) -> list[Finding]:
     for project, paths in by_project.values():
         checker = _Checker(project)
         universe = list(dict.fromkeys(project.closure([*paths, *project.theory_files()], None)))
-        theories = {p: parse_theory(read_source(p), project.keywords_for(p)) for p in universe}
+        theories = {p: parse_theory(read_lenient(p), project.keywords_for(p)) for p in universe}
         for path, theory in theories.items():
             name = theory.header.name.text if theory.header else path.stem
             for e in entities(theory, name, path):
