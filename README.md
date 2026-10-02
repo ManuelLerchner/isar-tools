@@ -115,7 +115,7 @@ isar check --ignore oops --format json
 | `symbols`   | `non-ascii` (opt-in)                                                                                                                                           |
 | `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
-| `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
+| `notation`  | `spelled-out-notation`, `spelled-out-abbreviation` (opt-in, heuristic)                                                                                         |
 | `unused`    | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption` (opt-in, heuristic)                                                                   |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
@@ -150,7 +150,8 @@ in that block. A mixfix needs its arguments, so only a name that heads an
 application with enough of them is reported; an infix (`(op)`) or a notation
 without slots is reported anywhere. Bound and fixed variables, record field
 updates, and a declaration's own equations are skipped. `--allow NAME` accepts
-a constant. See `isar_tools/checks/notation.py`.
+a constant. A `spelled-out-abbreviation` is a term that is the right-hand side
+of an `abbreviation`. See `isar_tools/checks/notation.py`.
 
 `unused` reports a named fact no other text of the project cites: by name,
 qualified (`T.foo`, `q.foo` of an interpretation), with arguments

@@ -186,3 +186,33 @@ def test_one_line_theory(make_project: MakeProject) -> None:
     )
     [finding] = check_notation(collect([base / "T.thy"]))
     assert finding.message == r"one is written out; its notation is \<one>"
+
+
+def test_abbreviations(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+definition step :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "step a b = a"
+abbreviation both where "both x y \<equiv> step x y + step y x"
+abbreviation fwd where "fwd x \<equiv> step x (Suc x)"
+abbreviation narrow where "narrow x y \<equiv> step x y"
+abbreviation from_var where "from_var x \<equiv> x + 1"
+context fixes k :: nat begin
+abbreviation local_k where "local_k \<equiv> step k k"
+lemma "step k k = 0" sorry
+end
+lemma "both a b = 0" "fwd 2 = 0" "c = step a b + step b a" "(step a b + step b a) = c"
+lemma "step a b + step b a + c = 0" "fwd (f a) = step (f a) (Suc (f a))"
+lemma "step k k = 0" "g fwd" "step a (Suc b) = 0"
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    got = [(f.line, f.code, f.message.split(" is written out")[0]) for f in findings]
+    assert got == [
+        (9, "spelled-out-abbreviation", "step k k"),
+        (11, "spelled-out-abbreviation", "step a b + step b a"),
+        (12, "spelled-out-abbreviation", "step (f a) (Suc (f a))"),
+    ]

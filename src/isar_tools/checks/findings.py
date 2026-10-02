@@ -59,6 +59,10 @@ CODES: dict[str, tuple[str, str]] = {
         "notation",
         "a constant written out where the project gave it notation or overloading (heuristic)",
     ),
+    "spelled-out-abbreviation": (
+        "notation",
+        "a term written out where the project declared an abbreviation for it (heuristic)",
+    ),
     "unused-lemma": ("unused", "a named fact nothing in the project cites (heuristic)"),
     "redundant-import": ("unused", "an import that another import of the theory reaches"),
     "unused-import": ("unused", "an import of which the theory uses nothing (heuristic)"),

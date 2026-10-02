@@ -14,6 +14,15 @@ later term should use it:
   ``B`` is open, by ``unbundle B`` (until ``unbundle no B``), ``open_bundle``,
   ``includes B``, ``including B``, or a bundle that unbundles ``B``.
 
+``spelled-out-abbreviation``: a term that is the right-hand side of an
+``abbreviation``, its variables matching any argument, should be written as
+the abbreviation. Not followed: an alias of one token, a right-hand side that
+starts with a variable, and ``c x \\<equiv> f x``, which only narrows the type
+of ``f``. A right-hand side with an operator outside brackets matches only a
+whole term (bracketed, between separators, or the whole string), since
+precedence may split it otherwise. An abbreviation declared in an anonymous
+block holds only there.
+
 A short form holds after the command that introduces it, in its theory and in
 every theory importing it. Inside a ``locale``, ``class``, or ``context NAME``
 block (or after ``(in NAME)``) it holds in that locale and the locales
@@ -37,22 +46,34 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.checks.findings import Finding
-from isar_tools.checks.locales import TERM_KEYWORDS, bound_names, term_text
+from isar_tools.checks.locales import bound_names, term_text
+from isar_tools.checks.terms import (
+    TEXTS,
+    arguments,
+    delimited,
+    has_operator,
+    heads,
+    match,
+    spelling,
+    term_tokens,
+)
 from isar_tools.project.hierarchy import bracket_group, declarations, parse_mixfix
 from isar_tools.project.model import Project
-from isar_tools.project.names import entities
-from isar_tools.project.notation import INFIX, NotationError, template
+from isar_tools.project.names import Entity, entities
+from isar_tools.project.names import source as statement_source
+from isar_tools.project.notation import INFIX, NotationError, expansion, template
 from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_source
 from isar_tools.source.keywords import DOCUMENT, CommandKind
-from isar_tools.source.lexer import IDENTIFIER_RE, IGNORABLE, Kind, Token, tokenize
+from isar_tools.source.lexer import IGNORABLE, Kind, Token, tokenize
 from isar_tools.source.symbols import encode
 from isar_tools.source.theory import Command, Theory, parse_theory, significant, unquote
 
 CODE = "spelled-out-notation"
+ABBREVIATION_CODE = "spelled-out-abbreviation"
 
 # Commands whose strings and cartouches are no terms of the theory.
-_NO_TERMS = frozenset(
+_NOTEXTS = frozenset(
     {
         "setup",
         "local_setup",
@@ -85,17 +106,12 @@ _NO_TERMS = frozenset(
 )
 # A string after one of these is a mixfix, a type, or a target, not a term.
 _NOT_TERM_AFTER = frozenset({"(", "::", "in", "binder", *INFIX})
-_TERMS = frozenset({Kind.STRING, Kind.CARTOUCHE})
 # Elements that fix variables, and the words that end the variables.
 _FIXING = frozenset({"fixes", "for", "fix", "obtain", "obtains", "define"})
 _FIXED_END = frozenset(
     {"where", "assumes", "shows", "obtains", "if", "when", "begin", "defines", "notes"}
 )
 _INCLUDING = frozenset({"includes", "including"})
-# Infix words of HOL: what follows them is no argument of the name before.
-_INFIX_WORDS = frozenset({"o", "div", "mod", "dvd"})
-_OPENERS = frozenset({"(", "[", "{", "\\<lparr>"})
-_CLOSERS = frozenset({")", "]", "}", "\\<rparr>"})
 
 
 @dataclass(frozen=True)
@@ -116,6 +132,17 @@ class ShortForm:
     path: Path
     after: int  # index of the command that introduces it
     home: bool = False  # holds inside that command too: a locale's own parameters
+    variables: frozenset[str] = frozenset()  # pattern items that match any argument
+    code: str = CODE
+    # The pattern has an operator outside brackets: a match must be a whole
+    # term, or precedence may split it (`a \<and> b` in `a \<and> b \<and> c`).
+    whole: bool = False
+
+    @property
+    def applied(self) -> bool:
+        """Whether a use has to head an application: a mixfix with slots, or
+        a pattern that is an application itself."""
+        return self.arity > 0 or len(self.pattern) > 1
 
 
 @dataclass(frozen=True)
@@ -289,24 +316,65 @@ def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> It
             yield ShortForm(pattern, advice, 1, scope, path, index)
 
 
-def _declared_forms(theory: Theory, path: Path) -> Iterator[ShortForm]:
-    """Short forms from the mixfix of a declaration."""
+def _entity_scope(e: Entity) -> Scope:
+    parameter = e.member and e.command in ("fixes", "for")
+    if parameter and e.scope.endswith("_class"):
+        return Scope("global")  # a class parameter is a global constant
+    if e.scope and (parameter or not e.member):
+        return Scope("locale", e.scope)
+    return Scope("global")
+
+
+def _abbreviation(theory: Theory, e: Entity, index: int, scope: Scope) -> ShortForm | None:
+    r"""``abbreviation c where "c x \<equiv> f x (g x)"``: the right-hand side as
+    a pattern with the variables of the left. Not reported: an alias of one
+    token, a pattern that starts with a variable, and ``c x \<equiv> f x``,
+    which only gives ``f`` a narrower type."""
+    try:
+        lhs, rhs = expansion(statement_source(theory, e, statement=True))
+    except NotationError:
+        return None
+    parameters = [t.text for t in term_tokens(lhs) if t.kind is Kind.WORD and t.text != e.name]
+    variables = frozenset(parameters)
+    toks = term_tokens(rhs)
+    pattern = tuple(spelling(toks))
+    if len(pattern) < 2 or pattern[0] in variables or list(pattern[1:]) == parameters:
+        return None
+    advice = f"it is the abbreviation {e.name}"
+    return ShortForm(
+        pattern,
+        advice,
+        0,
+        scope,
+        e.path,
+        index,
+        variables=variables,
+        code=ABBREVIATION_CODE,
+        whole=has_operator(toks),
+    )
+
+
+def _declared_forms(theory: Theory, path: Path, blocks: list[Scope]) -> Iterator[ShortForm]:
+    """Short forms from the mixfix of a declaration, and abbreviations.
+    ``blocks`` is the scope of the block around each command."""
     name = theory.header.name.text if theory.header else path.stem
     for e in entities(theory, name, path):
-        if e.kind != "constant" or not e.mixfix or e.mode == "output":
+        if e.kind != "constant" or e.mode == "output":
             continue
+        index = e.command_index
+        if e.command == "abbreviation":
+            # Inside an anonymous block, the abbreviation is generalized
+            # over the block's parameters when it leaves it.
+            block = blocks[index]
+            scope = block if block.kind == "block" else _entity_scope(e)
+            if form := _abbreviation(theory, e, index, scope):
+                yield form
         shown = _shown(e.mixfix, e.notation)
         if shown is None:
             continue
         parameter = e.member and e.command in ("fixes", "for")
-        if parameter and e.scope.endswith("_class"):
-            scope = Scope("global")  # a class parameter is a global constant
-        elif e.scope and (parameter or not e.member):
-            scope = Scope("locale", e.scope)
-        else:
-            scope = Scope("global")
         advice = f"its notation is {shown[0]}"
-        index = e.command_index
+        scope = _entity_scope(e)
         yield ShortForm((encode(e.name),), advice, shown[1], scope, path, index, parameter)
 
 
@@ -329,6 +397,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
     stack: list[_Block] = []
     opened = set(opened_before)
     contexts: list[_Context] = []
+    blocks: list[Scope] = []
     forms: list[ShortForm] = []
     includes: dict[str, set[str]] = {}
     for i, command in enumerate(theory.commands):
@@ -338,6 +407,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
             if stack:
                 stack.pop()
             contexts.append(_NO_CONTEXT)
+            blocks.append(Scope("global"))
             continue
         bundle = next((b.bundle for b in reversed(stack) if b.bundle), "")
         bundles, variables = goal.get(i) or (
@@ -353,11 +423,12 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
                 frozenset(variables).union(*(b.variables for b in stack)),
                 not bundle
                 and command.kind not in DOCUMENT
-                and command.name not in _NO_TERMS
+                and command.name not in _NOTEXTS
                 and "ML" not in command.name,
             )
         )
         scope = _scope(stack)
+        blocks.append(scope)
         if command.name == "notation":
             forms += _notations(args, scope, path, i)
         elif command.name == "adhoc_overloading":
@@ -385,21 +456,8 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
             elif command.name == "context":
                 block.opened.update(_words_after(args, _INCLUDING))
             stack.append(block)
-    forms += _declared_forms(theory, path)
+    forms += _declared_forms(theory, path, blocks)
     return _Analysis(theory, contexts, frozenset(opened), forms, includes)
-
-
-def _atom(tok: Token) -> bool:
-    """Whether ``tok`` is an argument by itself: a name, a literal, ``_``."""
-    if tok.kind is Kind.WORD:
-        return tok.text not in TERM_KEYWORDS and tok.text not in _INFIX_WORDS
-    return tok.kind in _TERMS or tok.text == "_" or bool(IDENTIFIER_RE.fullmatch(encode(tok.text)))
-
-
-def _head(toks: list[Token], i: int) -> bool:
-    """Whether ``toks[i]`` heads an application: application associates to
-    the left, so in ``g f x`` the name ``f`` is an argument of ``g``."""
-    return i == 0 or not (_atom(toks[i - 1]) or encode(toks[i - 1].text) in _CLOSERS)
 
 
 def _field_name(toks: list[Token], i: int) -> bool:
@@ -409,21 +467,6 @@ def _field_name(toks: list[Token], i: int) -> bool:
     before = encode(toks[i - 1].text) if i else ""
     # `:=` lexes as `:` and `=`; `(|` as `(` and `|`.
     return after == ":=" or (after[:1] == "=" and before in ("\\<lparr>", "|", ","))
-
-
-def _arguments(toks: list[Token], i: int) -> int:
-    """How many arguments follow at ``toks[i]``; a bracket group is one."""
-    count = 0
-    while i < len(toks) and (_atom(toks[i]) or encode(toks[i].text) in _OPENERS):
-        depth = 0
-        while i < len(toks):
-            text = encode(toks[i].text)
-            depth += (text in _OPENERS) - (text in _CLOSERS)
-            i += 1
-            if depth <= 0:
-                break
-        count += 1
-    return count
 
 
 class _Checker:
@@ -549,11 +592,11 @@ def _check(
         bundles = _expand(context.bundles, includes)
         toks = list(significant(command.tokens(theory.tokens)))
         for k, tok in enumerate(toks):
-            if tok.kind not in _TERMS or (k and toks[k - 1].text in _NOT_TERM_AFTER):
+            if tok.kind not in TEXTS or (k and toks[k - 1].text in _NOT_TERM_AFTER):
                 continue
             text, start = term_text(tok)
-            inner = [t for t in tokenize(text) if t.kind not in IGNORABLE]
-            spelled = [encode(t.text) for t in inner]
+            inner = term_tokens(text)
+            spelled = spelling(inner)
             variables = bound_names(inner) | context.variables
             consumed = 0
             for j, t in enumerate(inner):
@@ -561,25 +604,28 @@ def _check(
                     continue
                 if _field_name(inner, j):
                     continue
-                best: ShortForm | None = None
+                best: tuple[ShortForm, int] | None = None
                 for form in by_first.get(spelled[j], ()):
-                    n = len(form.pattern)
+                    end = match(form.pattern, form.variables, inner, spelled, j)
                     if (
-                        tuple(spelled[j : j + n]) == form.pattern
-                        and (best is None or n > len(best.pattern))
+                        end is not None
+                        and (best is None or end > best[1])
                         and _active(form, path, index, context, bundles, checker)
                     ):
-                        best = form
+                        best = form, end
                 if best is None:
                     continue
-                consumed = j + len(best.pattern)
-                needs = best.arity
-                if not needs or (_head(inner, j) and _arguments(inner, consumed) >= needs):
-                    written = text[t.start : inner[consumed - 1].end]
+                form, consumed = best
+                if form.applied and not heads(inner, j):
+                    continue
+                if form.whole and not delimited(inner, j, consumed):
+                    continue
+                if arguments(inner, consumed) >= form.arity:
+                    written = " ".join(text[t.start : inner[consumed - 1].end].split())
                     yield Finding.at(
                         path,
                         theory.lines,
                         start + t.start,
-                        CODE,
-                        f"{written} is written out; {best.advice}",
+                        form.code,
+                        f"{written} is written out; {form.advice}",
                     )
