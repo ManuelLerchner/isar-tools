@@ -25,7 +25,7 @@ from isar_tools.project.hierarchy import bracket_group
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
 from isar_tools.project.workspace import SourceFile
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IDENTIFIER_RE, Kind, Token
 from isar_tools.source.theory import Command, Theory, parse_theory, significant, unquote
@@ -169,7 +169,7 @@ class _Index:
 
     def theory(self, path: Path) -> Theory:
         if path not in self._theories:
-            text = read_source(path)
+            text = read_lenient(path)
             self._theories[path] = parse_theory(text, self.project.keywords_for(path))
         return self._theories[path]
 

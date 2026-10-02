@@ -12,5 +12,12 @@ def read_source(path: Path) -> str:
     return path.read_bytes().decode("utf-8")
 
 
+def read_lenient(path: Path) -> str:
+    """The text of ``path`` for analysis only: bytes that are not UTF-8 become
+    U+FFFD, so one such file does not stop a check of the whole project
+    (``isar check`` reports it as ``invalid-utf8``)."""
+    return path.read_bytes().decode("utf-8", errors="replace")
+
+
 def write_source(path: Path, text: str) -> None:
     path.write_bytes(text.encode("utf-8"))

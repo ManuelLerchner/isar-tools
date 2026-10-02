@@ -36,7 +36,7 @@ from isar_tools.project.names import (
     interpreted,
 )
 from isar_tools.project.workspace import SourceFile
-from isar_tools.source.files import read_source
+from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import Kind
 from isar_tools.source.theory import Theory, parse_theory, significant
@@ -163,7 +163,7 @@ def known_names(project: Project) -> set[str]:
     for session in project.sessions.values():
         names.add(session.name)
         for name, path in project.owned_theories(session).items():
-            theory = parse_theory(read_source(path), project.keywords_for(path))
+            theory = parse_theory(read_lenient(path), project.keywords_for(path))
             found += entities(theory, name, path, derived=True)
             interps += interpretations(theory, name, path)
             names |= {name, f"{session.name}.{name}", *_formal_names(theory)}
