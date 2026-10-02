@@ -29,7 +29,8 @@ lemma "P" using foo: by simp"""
 def test_duplicate_fact() -> None:
     body = """lemma "P" by (simp add: a b a)
 lemma "P" by (simp add: a a[symmetric] a [symmetric])
-lemma "P" by (simp add: a intro: a) (auto simp: a)"""
+lemma "P" by (simp add: a intro: a) (auto simp: a)
+lemma "P" by (simp add: [[simp_trace]] (b) b)"""
     assert found(body) == [
         (2, 29, "duplicate-fact", "a is listed twice after add:"),
         (3, 40, "duplicate-fact", "a[symmetric] is listed twice after add:"),
