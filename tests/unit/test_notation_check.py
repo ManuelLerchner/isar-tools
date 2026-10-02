@@ -79,6 +79,13 @@ lemma "map gamma_int xs" """
     assert found(make_project, body) == [(2, "gamma_int"), (2, "lift gamma_int")]
 
 
+def test_unresolvable_overloading(make_project: MakeProject) -> None:
+    # Bare partial applications and attribute terms give the generic name no type.
+    body = r"""lemma "map (lift gamma_int) xs = ys" "f (gamma_int i) = y" "(gamma_int i) = y"
+lemma "P" using foo[where g = "gamma_int"] bar[of "gamma_int"] by simp"""
+    assert found(make_project, body) == [(2, "gamma_int")]
+
+
 def test_bundles(make_project: MakeProject) -> None:
     body = r"""lemma "readback g s = x"
 unbundle outer
@@ -236,3 +243,20 @@ end
     assert [(f.line, f.message) for f in findings] == [
         (6, "step a a is written out; it is the abbreviation twice"),
     ]
+
+
+def test_included_abbreviations(make_project: MakeProject) -> None:
+    # An included session's abbreviation is no part of the project's vocabulary.
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T",
+            "T.thy": 'theory T imports "Lib.L" begin\nlemma "step a a = 0" "lib_c x = 0"\nend',
+            "lib/ROOT": "session Lib = HOL + theories L",
+            "lib/L.thy": "theory L imports Main begin\n"
+            'definition step :: "nat \\<Rightarrow> nat \\<Rightarrow> nat" where "step a b = a"\n'
+            'abbreviation twice where "twice x \\<equiv> step x x"\n'
+            'definition lib_c :: "nat \\<Rightarrow> nat" ("\\<C>") where "lib_c x = x"\nend',
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"], [base / "lib"]))
+    assert [(f.line, f.message.split(" is written out")[0]) for f in findings] == [(2, "lib_c")]

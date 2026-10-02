@@ -438,7 +438,10 @@ later term should use it:
 - a `notation f (mixfix)` command, likewise (`notation (input)` counts,
   other print modes do not);
 - `adhoc_overloading g == f`: `f x` should be written `g x`. An
-  instance that is a term (`"lift f"`) is matched as that token sequence;
+  instance that is a term (`"lift f"`) is matched as that token sequence.
+  Not where no type resolves `g`: in an attribute instantiation
+  (`[where x = "f"]`, `[of "f"]`) or as a bracketed argument
+  (`map (f x)`);
 - any of these inside `bundle B begin ... end`: the short form holds where
   `B` is open, by `unbundle B` (until `unbundle no B`), `open_bundle`,
   `includes B`, `including B`, or a bundle that unbundles `B`.
@@ -450,7 +453,8 @@ starts with a variable, and `c x \<equiv> f x`, which only narrows the type
 of `f`. A right-hand side with an operator outside brackets matches only a
 whole term (bracketed, between separators, or the whole string), since
 precedence may split it otherwise. An abbreviation declared in an anonymous
-block holds only there.
+block holds only there, and one from an included session (`-d`) not at all:
+it may fix types the project's terms do not have.
 
 A short form holds after the command that introduces it, in its theory and in
 every theory importing it. Inside a `locale`, `class`, or `context NAME`
