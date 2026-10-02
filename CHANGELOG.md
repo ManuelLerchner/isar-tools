@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-10-02)
 
 - `isar check --fix[=safe|unsafe-only|all]` applies the fixes findings carry, round by
   round until none is left; a fixable finding is marked `[*]`, and the JSON and CSV
