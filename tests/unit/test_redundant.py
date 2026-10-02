@@ -35,6 +35,7 @@ lemma registered [simp]: "a \<le> b \<Longrightarrow> step a c \<le> step b c" s
 lemma "quoted": obtains x where "x = 0" sorry
 lemma (in loc2) in_loc2: "step k k = k" sorry
 lemma "far_general": "far x" sorry
+lemma k_is_free: "k \<le> m \<Longrightarrow> step k c \<le> step m c" sorry
 end
 """
 
@@ -58,6 +59,8 @@ def test_redundant(make_project: MakeProject) -> None:
             "more_premises is an instance of general (Base.thy:4); cite it instead",
         ),
         (17, "duplicate-lemma", "in_loc2 states in_loc (Base.thy:9) again"),
+        # `k` is a parameter of `loc` only: outside it, a variable.
+        (19, "duplicate-lemma", "k_is_free states general (Base.thy:4) again"),
     ]
 
 

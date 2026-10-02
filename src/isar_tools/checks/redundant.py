@@ -15,8 +15,9 @@ A statement is read lexically. Premises come from ``assumes`` and ``if``
 ``A \\<Longrightarrow> C``; ``\\<And>x.``, ``fixes``, and ``for`` fix
 variables. Without types, a variable is a name fixed so, a schematic one
 (``?x``), or a short free name (at most three characters, a symbol counting as
-one) that the project declares no constant of and that is no common HOL
-constant. Any other name is a constant and matches only itself. A variable
+one) that is no constant of the project, no parameter of the lemma's locale or
+the locales it extends, and no common HOL constant. Any other name is a
+constant and matches only itself. A variable
 matches one argument: a name, a literal, or a bracket group, so ``f x``
 matches ``f (g y)`` but ``x`` does not match ``a + b`` unbracketed.
 
@@ -26,7 +27,7 @@ read: lemmas with several conclusions or ``obtains``, and B with an attribute
 that registers it (``[simp]``), which A might not replace.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -306,7 +307,11 @@ def _registers(args: list[Token]) -> bool:
     return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
-def _lemmas(theory: Theory, path: Path, constants: frozenset[str]) -> Iterator[_Lemma]:
+def _lemmas(
+    theory: Theory, path: Path, constants: Callable[[str], frozenset[str]]
+) -> Iterator[_Lemma]:
+    """The lemmas of ``theory``; ``constants`` gives the constants of a
+    locale's context."""
     name = theory.header.name.text if theory.header else path.stem
     for e in entities(theory, name, path):
         if e.kind != "fact" or e.member or e.command not in _GOALS:
@@ -318,7 +323,7 @@ def _lemmas(theory: Theory, path: Path, constants: frozenset[str]) -> Iterator[_
         registers = _registers(rest)
         if rest[0].text == "[":
             rest = rest[bracket_group(rest, 0)[1] :]
-        found = statement(rest[1:], constants)  # after the `:`
+        found = statement(rest[1:], constants(e.scope))  # after the `:`
         if found is not None:
             offset = toks[at].start
             yield _Lemma(
@@ -330,7 +335,10 @@ class _Checker:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.parents: dict[str, set[str]] = {}
+        self.constants: set[str] = set()
+        self.parameters: dict[str, set[str]] = {}  # locale -> its parameters
         self._visible: dict[Path, frozenset[Path]] = {}
+        self._in_context: dict[str, frozenset[str]] = {}
 
     def visible(self, path: Path) -> frozenset[Path]:
         if path not in self._visible:
@@ -347,6 +355,14 @@ class _Checker:
                 seen.add(name)
                 stack += self.parents.get(name, ())
         return seen
+
+    def in_context(self, locale: str) -> frozenset[str]:
+        """The constants of a lemma in ``locale``: the project's, and the
+        parameters of the locale and the locales it extends."""
+        if locale not in self._in_context:
+            local = (self.parameters.get(a, set()) for a in self.ancestors(locale))
+            self._in_context[locale] = frozenset(self.constants.union(*local))
+        return self._in_context[locale]
 
     def citable(self, general: _Lemma, special: _Lemma) -> bool:
         """Whether ``special``'s context can cite ``general``."""
@@ -374,18 +390,22 @@ def check_redundant(sources: Iterable[SourceFile]) -> list[Finding]:
         universe = list(dict.fromkeys(project.closure([*paths, *project.theory_files()], None)))
         theories = {p: parse_theory(read_source(p), project.keywords_for(p)) for p in universe}
         constants: set[str] = set()
+        # A locale's parameters are constants only in its context.
+        parameters: dict[str, set[str]] = {}
         for path, theory in theories.items():
             name = theory.header.name.text if theory.header else path.stem
             for e in entities(theory, name, path):
                 if e.kind == "constant":
-                    constants.add(e.name)
+                    local = e.command in ("fixes", "for") and not e.scope.endswith("_class")
+                    target = parameters.setdefault(e.scope, set()) if local else constants
+                    target.add(e.name)
                     # The words and symbols of its notation: `\<gamma>` for `gamma`.
-                    constants.update(spelling(term_tokens(e.notation)))
+                    target.update(spelling(term_tokens(e.notation)))
             for decl in declarations(theory, path):
                 extra = decl.sorts if decl.kind == "class" else []
                 checker.parents.setdefault(decl.name, set()).update(decl.parents, extra)
-        frozen = frozenset(constants)
-        lemmas = [lemma for p, t in theories.items() for lemma in _lemmas(t, p, frozen)]
+        checker.constants, checker.parameters = constants, parameters
+        lemmas = [lemma for p, t in theories.items() for lemma in _lemmas(t, p, checker.in_context)]
         by_key: dict[str, list[_Lemma]] = {}
         for lemma in lemmas:
             by_key.setdefault(_key(lemma), []).append(lemma)
