@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A theory file named on the command line now belongs to the project whose `ROOTS`
+  lists its session directory, not just to that directory. `isar check unused` on one
+  file no longer reports lemmas that theories in other sessions cite.
+
 ## 0.6.0 (2026-10-02)
 
 - `unused-import` no longer reports an import that the theories importing its importer

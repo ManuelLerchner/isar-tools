@@ -138,3 +138,17 @@ def test_imports_after_the_redundant_ones(make_project: MakeProject) -> None:
     findings = check_unused(collect([base / "U.thy", base / "V.thy"]))
     imports = [(f.path.name, f.code, f.message) for f in findings if "import" in f.code]
     assert imports == [("V.thy", "redundant-import", "P is imported through Q already")]
+
+
+def test_a_file_argument_sees_its_whole_project(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOTS": "lib\nmain\n",
+            "lib/ROOT": "session L = HOL + theories L",
+            "lib/L.thy": 'theory L imports Main begin\nlemma cited_downstream: "True" by simp\nend',
+            "main/ROOT": "session M = L + theories M",
+            "main/M.thy": "theory M imports L begin\n"
+            'lemma "True" using cited_downstream by simp\nend',
+        }
+    )
+    assert check_unused(collect([base / "lib/L.thy"])) == []
