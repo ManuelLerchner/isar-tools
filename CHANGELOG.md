@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `unused-import` no longer reports an import that the theories importing its importer
+  need, nor one that other imports reach through and that is used once those
+  redundant imports are removed. Removing every reported import now keeps a project
+  building.
+
 ## 0.5.0 (2026-10-02)
 
 - `isar check`: a `(* isar-ignore *)` comment silences the findings on its line, or
