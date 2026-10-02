@@ -101,6 +101,7 @@ isar check retired --retired-file retired.txt src/   # removed names that came b
 isar check prose src/             # names cited in text blocks; raw _ that LaTeX rejects
 isar check links site/index.html --browser-info browser_info   # links into HTML theories
 isar check locales -d ~/afp/thys  # free variables in locale headers
+isar check notation src/          # constants written out despite their notation
 isar check --ignore oops --format json
 ```
 
@@ -112,6 +113,7 @@ isar check --ignore oops --format json
 | `symbols`   | `non-ascii` (opt-in)                                                                                                                                           |
 | `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
+| `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
@@ -134,6 +136,17 @@ imports), not bound in the term, and not used anywhere else in the project or
 in the `-d` theories it imports. Only names of at least four characters with an
 underscore (or `\<^sub>`) are reported; `--allow NAME` (repeatable) accepts a
 name. Inner syntax is approximated lexically: see `isar_tools/checks/locales.py`.
+
+`notation` is heuristic too. Once a project gives a constant a short form, by a
+mixfix on its declaration, a `notation` command, or `adhoc_overloading g == f`,
+a later term that writes `f x` is reported. A short form in a bundle holds
+where the bundle is open (`unbundle`, `includes`, `including`); one in a
+locale, in that locale and those extending it; one in an anonymous `context`,
+in that block. A mixfix needs its arguments, so only a name that heads an
+application with enough of them is reported; an infix (`(op)`) or a notation
+without slots is reported anywhere. Bound and fixed variables, record field
+updates, and a declaration's own equations are skipped. `--allow NAME` accepts
+a constant. See `isar_tools/checks/notation.py`.
 
 `retired` reports identifiers the project removed on purpose, listed in
 `check.retired`, in the file `check.retired-file` names (one per line, `#`

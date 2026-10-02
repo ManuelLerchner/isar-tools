@@ -77,7 +77,7 @@ _BINDER_WORDS = frozenset(
     {"ALL", "EX", "EX1", "THE", "SOME", "LEAST", "GREATEST", "INF", "SUP", "UNION", "INTER"}
 )
 # Words of HOL's term syntax that are never variables.
-_KEYWORDS = _BINDER_WORDS | {"let", "in", "if", "then", "else", "case", "of"}
+TERM_KEYWORDS = _BINDER_WORDS | {"let", "in", "if", "then", "else", "case", "of"}
 # Tokens that may occur in a type after `::` without ending it.
 _TYPE_OPERATORS = frozenset({"=>", "\\<Rightarrow>", "*", "\\<times>", "+", "::", "~=>"})
 _OPEN = {"(": ")", "[": "]", "{": "}"}
@@ -151,7 +151,7 @@ def _let_vars(toks: list[Token], i: int) -> list[str]:
     return names
 
 
-def _bound(toks: list[Token]) -> set[str]:
+def bound_names(toks: list[Token]) -> set[str]:
     bound: set[str] = set()
     for i, tok in enumerate(toks):
         if _normal(tok) in _BINDER_SYMBOLS or (tok.kind is Kind.WORD and tok.text in _BINDER_WORDS):
@@ -193,7 +193,7 @@ def term_identifiers(text: str) -> Iterator[tuple[str, int]]:
     """Identifiers of the term ``text`` that may be free, with their offsets:
     not bound, not in a type annotation, not schematic, not qualified."""
     toks = [t for t in tokenize(text) if t.kind not in IGNORABLE]
-    skip = _bound(toks) | _KEYWORDS
+    skip = bound_names(toks) | TERM_KEYWORDS
     for tok in _free_words(toks):
         name = tok.text
         if name[0] in "?'" or name[0].isdigit() or "." in name or name in skip:
@@ -209,7 +209,7 @@ def reportable(name: str, min_length: int = MIN_LENGTH) -> bool:
     return len(shape) >= min_length and "_" in shape
 
 
-def _term_text(tok: Token) -> tuple[str, int]:
+def term_text(tok: Token) -> tuple[str, int]:
     """The text of a term token and the offset where it starts."""
     text = unquote(tok)
     # The opening delimiter is half of what unquoting removed: `"`, `‹`, or
@@ -326,7 +326,7 @@ class _Checker:
                 local |= self.names(outer)
             what = f"locale {decl.name}" if decl.kind == "locale" else "context"
             for tok in decl.terms:
-                text, start = _term_text(tok)
+                text, start = term_text(tok)
                 for name, offset in term_identifiers(text):
                     if (
                         name in local

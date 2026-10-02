@@ -894,7 +894,7 @@ def _owner(found: list[_Found], of: _Found, kind: str, owner: str) -> _Found | N
 def _notation(key: str, of: _Found, args: list[str], found: list[_Found]) -> dict[str, object]:
     e = of.entity
     kind = shape(e)
-    written = template(e)
+    written = template(e.mixfix, e.notation)
     symbol = fill(written, e.name, args)
     sides = expansion(_statement(of)) if e.command == "abbreviation" else None
     owner = _owner(found, of, kind.kind, kind.owner) if kind.owner else None
