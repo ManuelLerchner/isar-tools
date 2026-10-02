@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `isar check redundant` keeps lemmas from anonymous and extended contexts within
+  their originating block and its nested blocks. It no longer suggests using a
+  theorem conditional on a contract to prove that contract outside the context.
+  Named locale ancestry and comparisons within a shared block remain supported.
+
 ## 0.7.1 (2026-10-02)
 
 - `check.groups = ["all"]` in the configuration runs every group, as `--group all` does;
