@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-10-02)
 
 - `unused-import` no longer reports an import that the theories importing its importer
   need, nor one that other imports reach through and that is used once those
