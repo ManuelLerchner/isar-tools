@@ -290,7 +290,7 @@ def summary(findings: list[Finding]) -> str:
 
 
 # A fix can make another finding, or its fix, appear; this bounds the rounds.
-_MAX_ROUNDS = 20
+_MAX_ROUNDS = 100
 
 
 def _fix(args: argparse.Namespace) -> int:

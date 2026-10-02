@@ -415,20 +415,21 @@ def _implicit(theory: Theory, command: Command) -> bool:
 
 
 def _drop_import(theory: Theory, header: Header, imp: Name, *, safe: bool) -> Fix | None:
-    """Delete ``imp`` from the header, and the space before it. The last
-    import stays. A zero-width edit at ``begin`` is part of every such fix, so
-    one round removes at most one import of a theory and the next round sees
-    how many are left."""
-    if len(header.imports) < 2 or header.begin < 0:
+    """Delete ``imp`` from the header, and the space before it. Redundant
+    imports can all go at once: the theory graph is acyclic, so the kept ones
+    still reach every theory. An unused one cannot, since every import of a
+    theory may be unused: a zero-width edit at ``begin`` makes such fixes
+    overlap, so one round removes one, and the last import stays."""
+    if len(header.imports) < 2:
         return None
     text = theory.text
-    end = (
-        text.index('"', imp.start + 1) + 1 if text[imp.start] == '"' else imp.start + len(imp.text)
-    )
+    quoted = text[imp.start] == '"'
+    end = text.index('"', imp.start + 1) + 1 if quoted else imp.start + len(imp.text)
     start = imp.start
     while start > 0 and text[start - 1].isspace():
         start -= 1
-    return Fix((Edit(start, end), Edit(header.begin, header.begin)), safe)
+    one_per_round = () if safe else (Edit(header.begin, header.begin),)
+    return Fix((Edit(start, end), *one_per_round), safe)
 
 
 def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:
