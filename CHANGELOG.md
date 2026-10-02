@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `check.groups = ["all"]` in the configuration runs every group, as `--group all` does;
+  0.7.0 rejected it as an unknown group.
+
 ## 0.7.0 (2026-10-02)
 
 - `isar check --fix[=safe|unsafe-only|all]` applies the fixes findings carry, round by

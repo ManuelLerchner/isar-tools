@@ -316,3 +316,18 @@ def test_leaf_sessions(
     _, out, _ = run(capsys, "unused", ".", "--leaf-session", "Core")
     assert "core_result" not in out
     assert "lemma example" in out
+
+
+def test_all_groups_from_the_configuration(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "isar.toml": '[check]\ngroups = ["all"]\n',
+            "T.thy": 'theory T imports Main begin\nlemma "True" by (simp add:)\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    status, out, _ = run(capsys, "T.thy")
+    assert status == 1
+    assert "empty-modifier" in out
