@@ -189,7 +189,7 @@ def parse(path: Path, table: dict[str, object]) -> Config:
 
 def _validate_check(where: str, check: dict[str, object]) -> None:
     for group in cast(list[str], check.get("groups", [])):
-        if group not in GROUPS:
+        if group not in (*GROUPS, "all"):
             raise ConfigError(f"{where}: check.groups: unknown group {group!r}")
     for code in cast(list[str], check.get("ignore", [])):
         if code not in CODES:
