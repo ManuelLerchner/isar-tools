@@ -64,6 +64,7 @@ def test_parse_everything(
                 "groups": ["proofs"],
                 "ignore": ["oops"],
                 "allow": ["n"],
+                "leaf-sessions": ["Ex"],
                 "retired": ["old"],
                 "retired-file": "retired.txt",
             },
@@ -77,6 +78,7 @@ def test_parse_everything(
         "groups": ["proofs"],
         "ignore": ["oops"],
         "allow": ["n"],
+        "leaf-sessions": ["Ex"],
         "retired": ["old"],
         "retired-file": base / "retired.txt",
     }

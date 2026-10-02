@@ -519,7 +519,9 @@ anything else counts as a citation, so the check misses rather than invents.
 
 A project's main results are often cited only outside it, in a paper or a
 manifest: `--allow NAME` (or `check.allow`) or an `isar-ignore` comment
-keeps one.
+keeps one. A session whose lemmas are all results, such as a session of
+examples, is named by `--leaf-session NAME` (or `check.leaf-sessions`):
+its lemmas are not reported, its imports and assumptions are.
 
 ### `unused-lemma`
 

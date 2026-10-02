@@ -17,6 +17,7 @@ The file is found by searching upward from the working directory; the first
     groups = ["project", "proofs", "syntax"]
     ignore = ["oops"]
     allow = ["some_name"]
+    leaf-sessions = ["Examples"]
     retired = ["old_name"]
     retired-file = "retired_identifiers.txt"
 
@@ -105,7 +106,14 @@ class Config:
 
 _SECTIONS: dict[str, dict[str, type]] = {
     "fmt": {"max-line-length": int, "indent": int, "max-blank-lines": int, "normalize": bool},
-    "check": {"groups": list, "ignore": list, "allow": list, "retired": list, "retired-file": str},
+    "check": {
+        "groups": list,
+        "ignore": list,
+        "allow": list,
+        "leaf-sessions": list,
+        "retired": list,
+        "retired-file": str,
+    },
     "stats": {"max-line-length": int, "watch": list},
 }
 
@@ -232,6 +240,8 @@ def apply(config: Config, args: argparse.Namespace) -> None:
         _default(args, "groups", config.check.get("groups"))
         args.ignore = [*cast(Sequence[str], config.check.get("ignore", [])), *args.ignore]
         args.allow = [*cast(Sequence[str], config.check.get("allow", [])), *args.allow]
+        leaves = cast(Sequence[str], config.check.get("leaf-sessions", []))
+        args.leaf_session = [*leaves, *args.leaf_session]
         args.retired = [*cast(Sequence[str], config.check.get("retired", [])), *args.retired]
         if "retired-file" in config.check:
             args.retired_file = [config.check["retired-file"], *args.retired_file]
