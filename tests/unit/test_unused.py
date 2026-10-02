@@ -60,3 +60,26 @@ def test_antiquotations() -> None:
     ]
     assert list(antiquotations("@{thm x")) == [(0, 7)]
     assert list(antiquotations(r"\<^const>\<open>c")) == [(0, 17)]
+
+
+def test_imports(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A B C D E T\n",
+            "A.thy": 'theory A imports Main begin definition a_const where "a_const = 0" end',
+            "B.thy": 'theory B imports A begin definition b_const where "b_const = 0" end',
+            "C.thy": 'theory C imports Main begin definition c_const where "c_const = 0" end',
+            "D.thy": 'theory D imports Main begin lemma d_rule [simp]: "True" by simp end',
+            "E.thy": "theory E imports Main begin end",
+            "T.thy": (
+                "theory T\n  imports A B C D E\nbegin\n"
+                'lemma "b_const = a_const" using d_unrelated by simp\nend\n'
+            ),
+        }
+    )
+    findings = check_unused(collect([base / "T.thy"]))
+    assert [(f.line, f.column, f.code, f.message) for f in findings] == [
+        (2, 11, "redundant-import", "A is imported through B already"),
+        (2, 15, "unused-import", "imports C, but uses nothing it adds"),
+        (2, 19, "unused-import", "imports E, but uses nothing it adds"),
+    ]

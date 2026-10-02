@@ -60,6 +60,8 @@ CODES: dict[str, tuple[str, str]] = {
         "a constant written out where the project gave it notation or overloading (heuristic)",
     ),
     "unused-lemma": ("unused", "a named fact nothing in the project cites (heuristic)"),
+    "redundant-import": ("unused", "an import that another import of the theory reaches"),
+    "unused-import": ("unused", "an import of which the theory uses nothing (heuristic)"),
     "tab": ("hygiene", "a tab character"),
     "carriage-return": ("hygiene", "a carriage return (CRLF or CR line endings)"),
     "bidi-control": ("hygiene", "a bidirectional Unicode control character"),
