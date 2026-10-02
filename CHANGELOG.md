@@ -7,6 +7,7 @@
   used; `--allow` keeps a main result cited only elsewhere. `redundant-import` reports
   an import another import reaches already; `unused-import` (heuristic) one of which
   the theory names nothing and that has no instances, notation, ML, or simp rules.
+  `unused-assumption` reports a named locale or class assumption no proof cites.
 - `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
   nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
   one modifier.

@@ -116,7 +116,7 @@ isar check --ignore oops --format json
 | `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
 | `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
-| `unused`    | `unused-lemma`, `redundant-import`, `unused-import` (opt-in, heuristic)                                                                                        |
+| `unused`    | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption` (opt-in, heuristic)                                                                   |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |
@@ -162,7 +162,10 @@ Main results cited only outside the project take `--allow NAME` or an
 of the same theory already. An `unused-import` adds theories of which the
 importing theory names nothing; a theory with instances, notation, ML, setup,
 or a fact with a registering attribute may be needed without a name and keeps
-its import.
+its import. An `unused-assumption` is a named `assumes` of a locale or class
+that no proof cites, while nothing cites its assumptions as a whole
+(`loc_axioms`, `loc_def`, `loc.axioms`): the locale may assume less than it
+says. Unnamed assumptions are not checked.
 
 `retired` reports identifiers the project removed on purpose, listed in
 `check.retired`, in the file `check.retired-file` names (one per line, `#`
