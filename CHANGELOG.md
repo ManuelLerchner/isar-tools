@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 (2026-10-02)
 
 - `check.groups = ["all"]` in the configuration runs every group, as `--group all` does;
   0.7.0 rejected it as an unknown group.
