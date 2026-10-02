@@ -15,8 +15,9 @@ A statement is read lexically. Premises come from ``assumes`` and ``if``
 ``A \\<Longrightarrow> C``; ``\\<And>x.``, ``fixes``, and ``for`` fix
 variables. Without types, a variable is a name fixed so, a schematic one
 (``?x``), or a short free name (at most three characters, a symbol counting as
-one) that is no constant of the project, no parameter of the lemma's locale or
-the locales it extends, and no common HOL constant. Any other name is a
+one) that no theory the lemma's theory imports declares a constant of, that is
+no parameter of the lemma's locale or the locales it extends, and that is no
+common HOL constant. Any other name is a
 constant and matches only itself. A variable
 matches one argument: a name, a literal, or a bracket group, so ``f x``
 matches ``f (g y)`` but ``x`` does not match ``a + b`` unbracketed.
@@ -27,7 +28,7 @@ read: lemmas with several conclusions or ``obtains``, and B with an attribute
 that registers it (``[simp]``), which A might not replace.
 """
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -307,11 +308,8 @@ def _registers(args: list[Token]) -> bool:
     return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
-def _lemmas(
-    theory: Theory, path: Path, constants: Callable[[str], frozenset[str]]
-) -> Iterator[_Lemma]:
-    """The lemmas of ``theory``; ``constants`` gives the constants of a
-    locale's context."""
+def _lemmas(theory: Theory, path: Path, checker: "_Checker") -> Iterator[_Lemma]:
+    """The lemmas of ``theory``, read from ``path``."""
     name = theory.header.name.text if theory.header else path.stem
     for e in entities(theory, name, path):
         if e.kind != "fact" or e.member or e.command not in _GOALS:
@@ -323,7 +321,7 @@ def _lemmas(
         registers = _registers(rest)
         if rest[0].text == "[":
             rest = rest[bracket_group(rest, 0)[1] :]
-        found = statement(rest[1:], constants(e.scope))  # after the `:`
+        found = statement(rest[1:], checker.in_context(e.scope, path))  # after the `:`
         if found is not None:
             offset = toks[at].start
             yield _Lemma(
@@ -335,10 +333,11 @@ class _Checker:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.parents: dict[str, set[str]] = {}
-        self.constants: set[str] = set()
+        self.constants: dict[Path, set[str]] = {}  # theory -> what it declares
         self.parameters: dict[str, set[str]] = {}  # locale -> its parameters
         self._visible: dict[Path, frozenset[Path]] = {}
-        self._in_context: dict[str, frozenset[str]] = {}
+        self._imported: dict[Path, frozenset[str]] = {}
+        self._in_context: dict[tuple[str, Path], frozenset[str]] = {}
 
     def visible(self, path: Path) -> frozenset[Path]:
         if path not in self._visible:
@@ -356,13 +355,18 @@ class _Checker:
                 stack += self.parents.get(name, ())
         return seen
 
-    def in_context(self, locale: str) -> frozenset[str]:
-        """The constants of a lemma in ``locale``: the project's, and the
-        parameters of the locale and the locales it extends."""
-        if locale not in self._in_context:
+    def in_context(self, locale: str, path: Path) -> frozenset[str]:
+        """The constants of a lemma in ``locale`` of the theory ``path``: those
+        the theory and its imports declare, and the parameters of the locale
+        and the locales it extends."""
+        if path not in self._imported:
+            declared = (self.constants.get(p, set()) for p in self.visible(path))
+            self._imported[path] = frozenset(name for names in declared for name in names)
+        key = (locale, path)
+        if key not in self._in_context:
             local = (self.parameters.get(a, set()) for a in self.ancestors(locale))
-            self._in_context[locale] = frozenset(self.constants.union(*local))
-        return self._in_context[locale]
+            self._in_context[key] = self._imported[path].union(*local)
+        return self._in_context[key]
 
     def citable(self, general: _Lemma, special: _Lemma) -> bool:
         """Whether ``special``'s context can cite ``general``."""
@@ -389,23 +393,24 @@ def check_redundant(sources: Iterable[SourceFile]) -> list[Finding]:
         checker = _Checker(project)
         universe = list(dict.fromkeys(project.closure([*paths, *project.theory_files()], None)))
         theories = {p: parse_theory(read_source(p), project.keywords_for(p)) for p in universe}
-        constants: set[str] = set()
-        # A locale's parameters are constants only in its context.
-        parameters: dict[str, set[str]] = {}
         for path, theory in theories.items():
             name = theory.header.name.text if theory.header else path.stem
             for e in entities(theory, name, path):
                 if e.kind == "constant":
+                    # A locale's parameters are constants only in its context.
                     local = e.command in ("fixes", "for") and not e.scope.endswith("_class")
-                    target = parameters.setdefault(e.scope, set()) if local else constants
+                    target = (
+                        checker.parameters.setdefault(e.scope, set())
+                        if local
+                        else checker.constants.setdefault(path, set())
+                    )
                     target.add(e.name)
                     # The words and symbols of its notation: `\<gamma>` for `gamma`.
                     target.update(spelling(term_tokens(e.notation)))
             for decl in declarations(theory, path):
                 extra = decl.sorts if decl.kind == "class" else []
                 checker.parents.setdefault(decl.name, set()).update(decl.parents, extra)
-        checker.constants, checker.parameters = constants, parameters
-        lemmas = [lemma for p, t in theories.items() for lemma in _lemmas(t, p, checker.in_context)]
+        lemmas = [lemma for p, t in theories.items() for lemma in _lemmas(t, p, checker)]
         by_key: dict[str, list[_Lemma]] = {}
         for lemma in lemmas:
             by_key.setdefault(_key(lemma), []).append(lemma)

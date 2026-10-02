@@ -36,6 +36,7 @@ lemma "quoted": obtains x where "x = 0" sorry
 lemma (in loc2) in_loc2: "step k k = k" sorry
 lemma "far_general": "far x" sorry
 lemma k_is_free: "k \<le> m \<Longrightarrow> step k c \<le> step m c" sorry
+lemma q_is_free: "q \<le> m \<Longrightarrow> step q c \<le> step m c" sorry
 end
 """
 
@@ -45,7 +46,9 @@ def test_redundant(make_project: MakeProject) -> None:
         {
             "ROOT": "session S = HOL + theories Base Other T\n",
             "Base.thy": BASE,
-            "Other.thy": 'theory Other imports Main begin lemma far: "far y" sorry end',
+            "Other.thy": (
+                'theory Other imports Main begin lemma far: "far y" sorry consts q :: nat end'
+            ),
             "T.thy": T,
         }
     )
@@ -61,6 +64,8 @@ def test_redundant(make_project: MakeProject) -> None:
         (17, "duplicate-lemma", "in_loc2 states in_loc (Base.thy:9) again"),
         # `k` is a parameter of `loc` only: outside it, a variable.
         (19, "duplicate-lemma", "k_is_free states general (Base.thy:4) again"),
+        # `q` is a constant of Other, which T does not import.
+        (20, "duplicate-lemma", "q_is_free states general (Base.thy:4) again"),
     ]
 
 
