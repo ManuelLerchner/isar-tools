@@ -1,9 +1,12 @@
 """Findings of ``isar check`` and the registry of their codes."""
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from isar_tools.source.lexer import LineIndex
+from isar_tools.source.files import read_source
+from isar_tools.source.lexer import Kind, LineIndex, tokenize
 
 
 @dataclass(frozen=True, order=True)
@@ -81,3 +84,44 @@ GROUPS = (
     "links",
 )
 DEFAULT_GROUPS = ("project", "proofs", "syntax")
+
+
+# `(* isar-ignore *)`, or `(* isar-ignore: code, code *)` for some codes only.
+_IGNORE_RE = re.compile(r"\(\*\s*isar-ignore(?:\s*:\s*([\w\s,-]*?))?\s*\*\)")
+# Files whose (* *) comments can carry an ignore comment.
+_COMMENTED = ("ROOT", "ROOTS")
+
+
+def ignore_comments(text: str) -> dict[int, frozenset[str] | None]:
+    """Lines an ignore comment covers, with the codes it names (None: every
+    code). A comment after code covers its line; a comment alone on its line
+    covers the next one."""
+    lines = LineIndex(text)
+    covered: dict[int, frozenset[str] | None] = {}
+    for tok in tokenize(text):
+        if tok.kind is not Kind.COMMENT or not (m := _IGNORE_RE.fullmatch(tok.text)):
+            continue
+        codes = frozenset(c for c in re.split(r"[\s,]+", m.group(1) or "") if c) or None
+        line_start = text.rfind("\n", 0, tok.start) + 1
+        alone = not text[line_start : tok.start].strip()
+        line = lines.line(tok.end - 1) + (1 if alone else 0)
+        known = covered.get(line, frozenset())
+        covered[line] = None if known is None or codes is None else known | codes
+    return covered
+
+
+def unsuppressed(findings: Iterable[Finding]) -> list[Finding]:
+    """``findings`` without the ones an ignore comment covers."""
+    covers: dict[Path, dict[int, frozenset[str] | None]] = {}
+    kept: list[Finding] = []
+    for f in findings:
+        if f.path not in covers:
+            commented = f.path.suffix == ".thy" or f.path.name in _COMMENTED
+            try:
+                covers[f.path] = ignore_comments(read_source(f.path)) if commented else {}
+            except (OSError, UnicodeDecodeError):
+                covers[f.path] = {}
+        codes = covers[f.path].get(f.line, frozenset())
+        if codes is not None and f.code not in codes:
+            kept.append(f)
+    return kept

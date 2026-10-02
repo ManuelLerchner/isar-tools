@@ -227,3 +227,23 @@ def test_retired(
     assert status == 2
     assert "absent.txt" in err
     assert run(capsys, "retired", "T.thy", "--retired", "unused")[0] == 0
+
+
+def test_ignore_comments(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
+    base = make_project(
+        {
+            "T.thy": (
+                "theory T imports Main begin\n"
+                'lemma a: "A" sorry (* isar-ignore *)\n'
+                "(* isar-ignore: unfinished-proof, oops *)\n"
+                'lemma b: "B" sorry\n'
+                'lemma c: "C" sorry (* isar-ignore: oops *)\n'
+                'lemma d: "D" sorry\n'
+                "end\n"
+            )
+        }
+    )
+    status, out, _ = run(capsys, "proofs", str(base / "T.thy"))
+    assert status == 1
+    lines = [line.split(": ")[0].rsplit(":", 2)[-2] for line in out.splitlines()]
+    assert lines == ["5", "6"]

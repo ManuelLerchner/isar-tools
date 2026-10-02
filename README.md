@@ -121,6 +121,10 @@ isar check --ignore oops --format json
 Project checks run for directory arguments only. `isar check --help` describes
 every code.
 
+A comment `(* isar-ignore *)` after code silences every finding on its line;
+alone on a line, it silences the next line. `(* isar-ignore: oops, tab *)`
+silences only those codes. This works in theories and `ROOT` files.
+
 `locales` is heuristic. Inside the terms of a `locale` or `context` header,
 Isabelle reads an unknown identifier as a free variable and generalizes over
 it, so an assumption citing a deleted or misspelt constant still builds. The
