@@ -11,6 +11,9 @@ A method modifier introduces a list: ``simp add: a b``, ``auto intro: c``,
 
 Only the method text of ``by``, ``apply``, ``apply_end``, ``proof``, and
 ``qed`` is read.
+
+- ``single-apply``: a goal proved by ``apply m`` and ``done`` alone, which
+  ``by m`` says in one step.
 """
 
 from collections.abc import Iterator
@@ -18,10 +21,13 @@ from pathlib import Path
 
 from isar_tools.checks.findings import Finding
 from isar_tools.project.hierarchy import bracket_group
+from isar_tools.source.keywords import PROOF_GOALS, THEORY_GOALS
 from isar_tools.source.lexer import Kind, Token
-from isar_tools.source.theory import Theory, significant
+from isar_tools.source.theory import Command, Theory, significant
 
 _METHOD_COMMANDS = frozenset({"by", "apply", "apply_end", "proof", "qed"})
+# Commands between a goal and its proof that `by` keeps before it.
+_CHAINING = frozenset({"using", "unfolding", "including", "supply"})
 # Tokens that end a modifier's list.
 _LIST_END = frozenset({")", ",", "|", ";", "]"})
 
@@ -68,10 +74,30 @@ def _findings(toks: list[Token]) -> Iterator[tuple[Token, str, str]]:
             seen.add(text)
 
 
+def _single_applies(theory: Theory) -> Iterator[Command]:
+    """``apply m`` directly between a goal (with its ``using`` and
+    ``unfolding``) and ``done``: the goal is ``by m``."""
+    commands = theory.commands
+    for i, command in enumerate(commands):
+        if command.name != "done" or i < 2 or commands[i - 1].name != "apply":
+            continue
+        k = i - 2
+        while k > 0 and commands[k].name in _CHAINING:
+            k -= 1
+        if commands[k].kind in THEORY_GOALS | PROOF_GOALS:
+            yield commands[i - 1]
+
+
 def check_methods(path: Path, theory: Theory) -> list[Finding]:
-    return [
+    findings = [
         Finding.at(path, theory.lines, tok.start, code, message)
         for command in theory.commands
         if command.name in _METHOD_COMMANDS
         for tok, code, message in _findings(list(significant(command.tokens(theory.tokens))))
     ]
+    for command in _single_applies(theory):
+        message = "one apply and done: write by"
+        findings.append(
+            Finding.at(path, theory.lines, theory.start(command), "single-apply", message)
+        )
+    return findings

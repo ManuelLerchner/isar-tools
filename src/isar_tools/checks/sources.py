@@ -9,7 +9,9 @@
   cannot check out.
 - ``leftovers`` group, after isabelle-linter's ``proof_finder``,
   ``counter_example_finder``, and ``diagnostic_command``: commands that search
-  or print but prove nothing, left in from an interactive session.
+  or print but prove nothing, left in from an interactive session, and
+  ``defer``, ``prefer``, and ``back``, which tie a proof to the order in which
+  goals and results come.
 """
 
 import re
@@ -21,6 +23,7 @@ from isar_tools.source.lexer import LineIndex
 from isar_tools.source.theory import Theory, significant
 
 PROOF_SEARCH = frozenset({"sledgehammer", "try", "try0", "solve_direct"})
+GOAL_REORDERING = frozenset({"defer", "prefer"})
 COUNTEREXAMPLE_SEARCH = frozenset({"nitpick", "quickcheck", "refute"})
 # Diagnostic commands that are not kind `diag` in every table.
 DIAGNOSTIC = frozenset({"ML_val"})
@@ -92,6 +95,13 @@ def check_leftovers(path: Path, theory: Theory) -> list[Finding]:
             code, message = (
                 "counterexample-search",
                 f"{name} without expect: its outcome is not checked",
+            )
+        elif name in GOAL_REORDERING:
+            code, message = "goal-reordering", f"{name} reorders the goals; prove them in order"
+        elif name == "back":
+            code, message = (
+                "backtracking",
+                "back takes the next result of the previous method, which can change with it",
             )
         elif command.kind is CommandKind.DIAG or name in DIAGNOSTIC:
             code, message = "diagnostic-command", f"{name} prints but proves nothing"

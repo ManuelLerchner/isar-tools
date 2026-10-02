@@ -120,8 +120,8 @@ isar check --ignore oops --format json
 | `unused`    | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption` (opt-in, heuristic)                                                                   |
 | `redundant` | `duplicate-lemma`, `subsumed-lemma` (opt-in, heuristic)                                                                                                        |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
-| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
-| `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |
+| `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command`, `goal-reordering`, `backtracking` (opt-in)                                                      |
+| `methods`   | `empty-modifier`, `duplicate-fact`, `single-apply` (opt-in)                                                                                                    |
 | `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
 | `prose`     | `prose-reference`, `prose-underscore` (opt-in)                                                                                                                 |
 | `links`     | `broken-link`, `broken-anchor`, `anchor-name` (opt-in)                                                                                                         |

@@ -77,6 +77,7 @@ lemma x: "True"
 thm x
 ML_val \\<open>1\\<close>
 lemma y: "True" try0 by simp
+lemma z: "A \\<and> B" apply (rule conjI) defer prefer 2 apply (rule disjI1) back sorry
 end
 """
     assert codes(check_leftovers(Path("A.thy"), parse_theory(text))) == [
@@ -85,4 +86,7 @@ end
         (7, 1, "diagnostic-command"),
         (8, 1, "diagnostic-command"),
         (9, 17, "proof-search"),
+        (10, 42, "goal-reordering"),
+        (10, 48, "goal-reordering"),
+        (10, 77, "backtracking"),
     ]
