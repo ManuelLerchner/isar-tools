@@ -104,6 +104,7 @@ isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check notation src/          # constants written out despite their notation
 isar check methods src/           # (simp add:), facts listed twice
 isar check unused src/            # lemmas nothing cites, imports nothing needs
+isar check redundant src/         # lemmas another lemma states already
 isar check --ignore oops --format json
 ```
 
@@ -117,6 +118,7 @@ isar check --ignore oops --format json
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
 | `notation`  | `spelled-out-notation`, `spelled-out-abbreviation` (opt-in, heuristic)                                                                                         |
 | `unused`    | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption` (opt-in, heuristic)                                                                   |
+| `redundant` | `duplicate-lemma`, `subsumed-lemma` (opt-in, heuristic)                                                                                                        |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |

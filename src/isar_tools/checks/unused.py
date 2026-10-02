@@ -34,7 +34,7 @@ _NAME = re.compile(rf"{IDENTIFIER_RE.pattern}(?:\.{IDENTIFIER_RE.pattern})*")
 _TEXT_KINDS = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE, Kind.VERBATIM, Kind.ALT_STRING})
 # Attributes that transform a fact or describe its cases without registering it
 # anywhere; any other attribute puts the fact to use without its name.
-_INERT_ATTRIBUTES = frozenset(
+INERT_ATTRIBUTES = frozenset(
     {
         "case_names",
         "case_conclusion",
@@ -142,7 +142,7 @@ def _registers(toks: list[Token], index: int) -> bool:
     if [t.text for t in rest[:1]] != ["["]:
         return False
     group, _ = bracket_group(rest, 0)
-    return any(name not in _INERT_ATTRIBUTES for name in _attribute_names(group))
+    return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
 def _facts(theory: Theory, name: str, path: Path) -> list[Entity]:
@@ -317,7 +317,7 @@ _IMPLICIT_COMMANDS = frozenset(
 _FACT_COMMANDS = frozenset({"lemma", "theorem", "corollary", "proposition", "lemmas", "theorems"})
 
 
-def _attribute_names(group: list[Token]) -> list[str]:
+def attribute_names(group: list[Token]) -> list[str]:
     """The attribute names of ``[a x, b]``: ``a`` and ``b``."""
     return [group[i + 1].text for i, t in enumerate(group[:-1]) if t.text in ("[", ",")]
 
@@ -335,7 +335,7 @@ def _implicit(theory: Theory, command: Command) -> bool:
     if len(toks) <= at or toks[at].text != "[":
         return False
     group, _ = bracket_group(toks, at)
-    return any(name not in _INERT_ATTRIBUTES for name in _attribute_names(group))
+    return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
 def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:

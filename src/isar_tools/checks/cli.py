@@ -13,6 +13,7 @@ from isar_tools.checks.methods import check_methods
 from isar_tools.checks.notation import check_notation
 from isar_tools.checks.project import check_project
 from isar_tools.checks.prose import check_prose
+from isar_tools.checks.redundant import check_redundant
 from isar_tools.checks.retired import check_retired, read_retired
 from isar_tools.checks.sources import (
     check_hygiene,
@@ -187,6 +188,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
         findings += check_notation(readable, allow=args.allow)
     if "unused" in groups:
         findings += check_unused(readable, allow=args.allow)
+    if "redundant" in groups:
+        findings += check_redundant(readable)
     if "prose" in groups:
         findings += check_prose(readable, parsed, allow=args.allow)
     if "links" in groups:
@@ -230,6 +233,7 @@ _GROUP_COLORS = {
     "locales": "blue",
     "notation": "cyan",
     "unused": "magenta",
+    "redundant": "magenta",
     "hygiene": "magenta",
     "leftovers": "yellow",
     "methods": "yellow",
