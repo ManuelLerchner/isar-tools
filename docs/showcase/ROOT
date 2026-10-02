@@ -1,0 +1,16 @@
+session Showcase = HOL +
+  options [document = false]
+  directories "gone" "a" "b"
+  theories
+    Base
+    Extra
+    Tour
+    Gallery
+    Hygiene
+    Misnamed
+    Broken
+    Latin1
+    Dup
+    Missing
+    "sub/Path"
+  document_files "absent.tex"

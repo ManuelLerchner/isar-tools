@@ -1,0 +1,4 @@
+# The showcase project for docs/CHECKS.md: every finding here is on purpose.
+
+[check]
+retired = ["old_rule"]

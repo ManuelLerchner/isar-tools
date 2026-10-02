@@ -5,14 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "isar-tools"
 version = "0.0.0"
-description = "Source tooling for Isabelle/Isar projects: formatting, checks, and statistics."
+description = "Linting, formatting, and project analysis for Isabelle/Isar, without running Isabelle."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Manuel Lerchner" }]
 requires-python = ">=3.11"
 dependencies = []
-keywords = ["isabelle", "isar", "formatter", "theorem-proving"]
+keywords = [
+  "isabelle",
+  "isar",
+  "formatter",
+  "linter",
+  "static-analysis",
+  "theorem-proving",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

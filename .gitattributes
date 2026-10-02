@@ -2,3 +2,6 @@
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 # Fixtures that test CRLF handling must keep their line endings.
 tests/formatter/**/crlf.thy -text
+# Showcase fixtures that demonstrate CRLF and non-UTF-8 findings.
+docs/showcase/Hygiene.thy -text
+docs/showcase/Latin1.thy -text
