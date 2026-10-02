@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `isar check redundant` (opt-in, heuristic): `duplicate-lemma` reports a lemma that
+  states an earlier one again up to variable names; `subsumed-lemma` one that is an
+  instance of another, which it can cite instead.
 - `isar check unused` (opt-in, heuristic): `unused-lemma` reports a named fact
   nothing in the project cites. Facts with an attribute such as `[simp]` count as
   used; `--allow` keeps a main result cited only elsewhere. `redundant-import` reports
