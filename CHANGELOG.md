@@ -6,6 +6,11 @@
   need, nor one that other imports reach through and that is used once those
   redundant imports are removed. Removing every reported import now keeps a project
   building.
+- `spelled-out-notation` no longer reports an `adhoc_overloading` instance where
+  Isabelle could not resolve the generic name: in an attribute instantiation
+  (`[where x = "f"]`) or as a bracketed argument (`map (f x)`).
+- `spelled-out-abbreviation` no longer reports the abbreviations of an included
+  session (`-d`); they may fix types the project's terms do not have.
 
 ## 0.5.0 (2026-10-02)
 

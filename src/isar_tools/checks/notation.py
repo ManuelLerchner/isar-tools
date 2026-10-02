@@ -9,7 +9,10 @@ later term should use it:
 - a ``notation f (mixfix)`` command, likewise (``notation (input)`` counts,
   other print modes do not);
 - ``adhoc_overloading g == f``: ``f x`` should be written ``g x``. An
-  instance that is a term (``"lift f"``) is matched as that token sequence;
+  instance that is a term (``"lift f"``) is matched as that token sequence.
+  Not where no type resolves ``g``: in an attribute instantiation
+  (``[where x = "f"]``, ``[of "f"]``) or as a bracketed argument
+  (``map (f x)``);
 - any of these inside ``bundle B begin ... end``: the short form holds where
   ``B`` is open, by ``unbundle B`` (until ``unbundle no B``), ``open_bundle``,
   ``includes B``, ``including B``, or a bundle that unbundles ``B``.
@@ -21,7 +24,8 @@ starts with a variable, and ``c x \\<equiv> f x``, which only narrows the type
 of ``f``. A right-hand side with an operator outside brackets matches only a
 whole term (bracketed, between separators, or the whole string), since
 precedence may split it otherwise. An abbreviation declared in an anonymous
-block holds only there.
+block holds only there, and one from an included session (``-d``) not at all:
+it may fix types the project's terms do not have.
 
 A short form holds after the command that introduces it, in its theory and in
 every theory importing it. Inside a ``locale``, ``class``, or ``context NAME``
@@ -49,6 +53,7 @@ from isar_tools.checks.findings import Finding
 from isar_tools.checks.locales import bound_names, term_text
 from isar_tools.checks.terms import (
     TEXTS,
+    argument_end,
     arguments,
     delimited,
     has_operator,
@@ -137,6 +142,8 @@ class ShortForm:
     # The pattern has an operator outside brackets: a match must be a whole
     # term, or precedence may split it (`a \<and> b` in `a \<and> b \<and> c`).
     whole: bool = False
+    # An adhoc_overloading instance: Isabelle resolves the generic name by type.
+    overloaded: bool = False
 
     @property
     def applied(self) -> bool:
@@ -313,7 +320,7 @@ def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> It
         advice = f"it is overloaded as {generic}{_in_bundle(scope)}"
         instances = [t for t in part[1:] if t.kind in (Kind.WORD, Kind.STRING, Kind.CARTOUCHE)]
         for pattern in filter(None, (_pattern(unquote(t)) for t in instances)):
-            yield ShortForm(pattern, advice, 1, scope, path, index)
+            yield ShortForm(pattern, advice, 1, scope, path, index, overloaded=True)
 
 
 def _entity_scope(e: Entity) -> Scope:
@@ -568,6 +575,12 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
             for bundle, names in found.includes.items():
                 includes.setdefault(bundle, set()).update(names)
             for form in found.forms:
+                session = project.session_of(form.path)
+                # An included theory's abbreviation may fix types the project's own
+                # terms do not have, and is no part of its vocabulary.
+                foreign = session is not None and session.external
+                if foreign and form.code == ABBREVIATION_CODE:
+                    continue
                 if " ".join(form.pattern) not in checker.allow:
                     by_first.setdefault(form.pattern[0], []).append(form)
         for path in paths:
@@ -575,6 +588,20 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
             assert found is not None  # set once the import cycle guard is left
             findings += _check(path, found, by_first, includes, checker)
     return findings
+
+
+def _passed_partially(toks: list[Token], start: int, end: int) -> bool:
+    """Whether the application at ``toks[start:end]`` and its one argument form a
+    bracket group passed as an argument, as in ``map f (g x)``: its type is a
+    function the context does not fix."""
+    stop = argument_end(toks, end)
+    return (
+        start > 1
+        and toks[start - 1].text == "("
+        and stop < len(toks)
+        and toks[stop].text == ")"
+        and not heads(toks, start - 1)
+    )
 
 
 def _check(
@@ -595,6 +622,8 @@ def _check(
             if tok.kind not in TEXTS or (k and toks[k - 1].text in _NOT_TERM_AFTER):
                 continue
             text, start = term_text(tok)
+            # `[where f = "..."]`, `[of "..."]`: a term with no surrounding type.
+            instantiation = k > 0 and toks[k - 1].text in ("=", "of")
             inner = term_tokens(text)
             spelled = spelling(inner)
             variables = bound_names(inner) | context.variables
@@ -620,6 +649,8 @@ def _check(
                     continue
                 if form.whole and not delimited(inner, j, consumed):
                     continue
+                if form.overloaded and (instantiation or _passed_partially(inner, j, consumed)):
+                    continue  # the generic name could not be resolved there
                 if arguments(inner, consumed) >= form.arity:
                     written = " ".join(text[t.start : inner[consumed - 1].end].split())
                     yield Finding.at(
