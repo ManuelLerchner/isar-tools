@@ -216,3 +216,23 @@ end
         (11, "spelled-out-abbreviation", "step a b + step b a"),
         (12, "spelled-out-abbreviation", "step (f a) (Suc (f a))"),
     ]
+
+
+def test_abbreviation_shapes(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+definition step :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "step a b = a"
+abbreviation twice where "twice x \<equiv> step x x"
+abbreviation (output) out where "out x \<equiv> step x 0"
+abbreviation eq_form where "eq_form x = step 1 x"
+lemma "step a b = 0" "step a a = 0" "step a 0 = 0" "step 1 a = 0" "f (step a) = 0"
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    assert [(f.line, f.message) for f in findings] == [
+        (6, "step a a is written out; it is the abbreviation twice"),
+    ]
