@@ -88,9 +88,9 @@ def test_imports(make_project: MakeProject) -> None:
     findings = [f for f in check_unused(collect(paths)) if f.code != "unused-lemma"]
     assert [(f.path.name, f.line, f.column, f.code, f.message) for f in findings] == [
         ("T.thy", 2, 11, "redundant-import", "A is imported through B already"),
-        ("T.thy", 2, 15, "unused-import", "imports C, but uses nothing it adds"),
-        ("T.thy", 2, 19, "unused-import", "imports E, but uses nothing it adds"),
-        ("U.thy", 1, 18, "unused-import", "imports C, but uses nothing it adds"),
+        ("T.thy", 2, 15, "unused-import", "imports C, but nothing uses what it adds"),
+        ("T.thy", 2, 19, "unused-import", "imports E, but nothing uses what it adds"),
+        ("U.thy", 1, 18, "unused-import", "imports C, but nothing uses what it adds"),
     ]
 
 
@@ -120,3 +120,21 @@ end
         (4, "assumption spare_a of locale loc is cited nowhere; the locale may assume less"),
         (13, "assumption spare_c of class cls is cited nowhere; the class may assume less"),
     ]
+
+
+def test_imports_after_the_redundant_ones(make_project: MakeProject) -> None:
+    """An import that others reach through is used once they are gone, and an
+    import serves the theories that import its importer."""
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories P Q R U V\n",
+            "P.thy": 'theory P imports Main begin definition p_const where "p_const = 0" end',
+            "Q.thy": "theory Q imports P begin end",
+            "R.thy": 'theory R imports Main begin definition r_const where "r_const = 0" end',
+            "U.thy": "theory U imports R begin end",
+            "V.thy": 'theory V imports P Q U begin lemma "p_const = r_const" sorry end',
+        }
+    )
+    findings = check_unused(collect([base / "U.thy", base / "V.thy"]))
+    imports = [(f.path.name, f.code, f.message) for f in findings if "import" in f.code]
+    assert imports == [("V.thy", "redundant-import", "P is imported through Q already")]

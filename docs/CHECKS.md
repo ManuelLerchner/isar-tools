@@ -561,7 +561,7 @@ begin
 ```
 
 ```console
-Gallery.thy:2:21: unused-import: imports Extra, but uses nothing it adds
+Gallery.thy:2:21: unused-import: imports Extra, but nothing uses what it adds
 ```
 
 ### `unused-assumption`

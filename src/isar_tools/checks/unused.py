@@ -166,6 +166,9 @@ class _Index:
         self._reach: dict[Path, frozenset[Path]] = {}
         self._provided: dict[Path, frozenset[str]] = {}
         self._implicit: dict[Path, bool] = {}
+        self._own: list[Path] = []
+        self._dependents: dict[Path, set[Path]] = {}
+        self._used: dict[Path, frozenset[str]] = {}
 
     def theory(self, path: Path) -> Theory:
         if path not in self._theories:
@@ -177,11 +180,12 @@ class _Index:
         """``paths``, the project's theories, and what they import, without
         included (``-d``) theories."""
         start = [*paths, *self.project.theory_files()]
-        return [
+        self._own = [
             p
             for p in dict.fromkeys(self.project.closure(start, None))
             if (session := self.project.session_of(p)) is None or not session.external
         ]
+        return self._own
 
     def reach(self, path: Path) -> frozenset[Path]:
         """``path`` and every project theory it imports, transitively."""
@@ -203,6 +207,22 @@ class _Index:
                     names.add(f"{e.scope}.{e.name}")
             self._provided[path] = frozenset(names)
         return self._provided[path]
+
+    def used_downstream(self, path: Path) -> frozenset[str]:
+        """Names the theory uses, and every theory of the project that imports
+        it, directly or not: an import also serves the importers."""
+        if not self._dependents:
+            for theory in self._own:
+                for reached in self.reach(theory):
+                    self._dependents.setdefault(reached, set()).add(theory)
+        users = self._dependents.get(path, set()) | {path}
+        return frozenset(name for user in users for name in self.used(user))
+
+    def used(self, path: Path) -> frozenset[str]:
+        """Names the theory uses."""
+        if path not in self._used:
+            self._used[path] = frozenset(name for name, _ in uses(self.theory(path)))
+        return self._used[path]
 
     def implicit(self, path: Path) -> bool:
         """Whether the theory can be needed without any of its names: it
@@ -340,7 +360,9 @@ def _implicit(theory: Theory, command: Command) -> bool:
 
 def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:
     """``redundant-import``: an import another import reaches already;
-    ``unused-import``: an import of which nothing it adds is used."""
+    ``unused-import``: an import of which nothing it adds is used, by the
+    theory or by any theory that imports it, once the redundant imports are
+    gone."""
     header = theory.header
     if header is None:
         return
@@ -350,19 +372,25 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
         for imp in header.imports
         if (target := index.project.resolve_import(path, session, imp.text)) is not None
     ]
-    used = {name for name, _ in uses(theory)}
+    redundant: set[Path] = set()
     for imp, target in imports:
         others = [(i, t) for i, t in imports if t != target]
         via = next((i for i, t in others if target in index.reach(t)), None)
         if via is not None:
+            redundant.add(target)
             message = f"{imp.text} is imported through {via.text} already"
             yield Finding.at(path, theory.lines, imp.start, "redundant-import", message)
-            continue
-        exclusive = index.reach(target).difference(*(index.reach(t) for _, t in others))
+    # Removing every redundant import keeps the same theories reachable, and
+    # only then does an import alone bring in what it adds.
+    kept = [(imp, target) for imp, target in imports if target not in redundant]
+    used = index.used_downstream(path)
+    for imp, target in kept:
+        others = (index.reach(t) for _, t in kept if t != target)
+        exclusive = index.reach(target).difference(*others)
         if any(index.implicit(p) for p in exclusive):
             continue
         if not any(index.provided(p) & used for p in exclusive):
-            message = f"imports {imp.text}, but uses nothing it adds"
+            message = f"imports {imp.text}, but nothing uses what it adds"
             yield Finding.at(path, theory.lines, imp.start, "unused-import", message)
 
 
