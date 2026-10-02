@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from isar_tools.checks import cli as check_cli
 from isar_tools.cli import main
 from tests.conftest import Golden, MakeProject
 
@@ -68,3 +69,37 @@ def test_fixable_note(
     assert main(["check", "unused", "T.thy"]) == 1
     _, err = capsys.readouterr()
     assert err.splitlines()[-1] == "1 with --fix=all"
+
+
+def test_all_takes_retired_when_it_has_names(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": "theory T imports Main begin\ntext \\<open>t\\<close>\n"
+            'lemma "old_name = x" sorry\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    assert main(["check", "all", "--retired", "old_name", "."]) == 1
+    out, _ = capsys.readouterr()
+    assert "retired-identifier" in out
+
+
+def test_rounds_are_bounded(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": "theory T imports Main begin\ntext \\<open>t\\<close>\n"
+            'lemma a: "True" by simp\nlemma b: "True" using a by simp\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    monkeypatch.setattr(check_cli, "_MAX_ROUNDS", 1)
+    assert main(["check", "unused", "--fix=all", "."]) == 1  # b went; a is left for a next run
+    out, err = capsys.readouterr()
+    assert "lemma a is cited nowhere" in out
+    assert err.startswith("fixed 1 finding\n")
