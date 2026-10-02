@@ -1,0 +1,5 @@
+exit 1
+U.thy:11:7: unused-lemma: lemma pair_one is cited nowhere in the project
+--- stderr
+fixed 3 findings
+1 finding: 1 unused-lemma

@@ -19,7 +19,7 @@ Only the method text of ``by``, ``apply``, ``apply_end``, ``proof``, and
 from collections.abc import Iterator
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.project.hierarchy import bracket_group
 from isar_tools.source.keywords import PROOF_GOALS, THEORY_GOALS
 from isar_tools.source.lexer import Kind, Token
@@ -37,40 +37,62 @@ def _modifier(toks: list[Token], i: int) -> bool:
     return toks[i].kind is Kind.WORD and i + 1 < len(toks) and toks[i + 1].text == ":"
 
 
-def _entries(toks: list[Token], i: int) -> tuple[list[tuple[str, Token]], int]:
-    """The entries of the list starting at ``toks[i]``, as text with their
-    first token, and the index after the list. An entry is a name or literal
-    with its attributes: ``foo[symmetric]``."""
-    entries: list[tuple[str, Token]] = []
+def _entries(toks: list[Token], i: int) -> tuple[list[tuple[str, int, int]], int]:
+    """The entries of the list starting at ``toks[i]``, as text with the
+    index of their first token and the index after them, and the index after
+    the list. An entry is a name or literal with its attributes:
+    ``foo[symmetric]``."""
+    entries: list[tuple[str, int, int]] = []
     while i < len(toks) and toks[i].text not in _LIST_END and not _modifier(toks, i):
-        first = toks[i]
-        if first.text in ("(", "["):
+        start = i
+        if toks[i].text in ("(", "["):
             _, i = bracket_group(toks, i)  # a nested method or an anonymous attribute
             continue
         i += 1
-        text = first.text
+        text = toks[start].text
         if i < len(toks) and toks[i].text == "[":
             group, i = bracket_group(toks, i)
             text += "[" + " ".join(t.text for t in group[1:-1]) + "]"
-        entries.append((text, first))
+        entries.append((text, start, i))
     return entries, i
 
 
-def _findings(toks: list[Token]) -> Iterator[tuple[Token, str, str]]:
-    """``(token, code, message)`` for the modifiers of one method text."""
+def _cut(toks: list[Token], first: int, stop: int) -> Fix:
+    """Delete ``toks[first:stop]`` and the space before them."""
+    return Fix((Edit(toks[first - 1].end, toks[stop - 1].end),), safe=True)
+
+
+def _empty_modifier_fix(toks: list[Token], i: int) -> Fix:
+    """``(simp add:)`` is ``simp``; elsewhere the modifier just goes."""
+    if (
+        i >= 2
+        and toks[i - 2].text == "("
+        and toks[i - 1].kind is Kind.WORD
+        and i + 2 < len(toks)
+        and toks[i + 2].text == ")"
+    ):
+        return Fix((Edit(toks[i - 2].start, toks[i + 2].end, toks[i - 1].text),), safe=True)
+    return _cut(toks, i, i + 2)
+
+
+def _findings(toks: list[Token]) -> Iterator[tuple[Token, str, str, Fix]]:
+    """``(token, code, message, fix)`` for the modifiers of one method text."""
     i = 1
     while i < len(toks):
         if not _modifier(toks, i):
             i += 1
             continue
-        modifier = toks[i]
+        modifier = i
         entries, i = _entries(toks, i + 2)
+        name = toks[modifier].text
         if not entries:
-            yield modifier, "empty-modifier", f"{modifier.text}: lists nothing"
+            fix = _empty_modifier_fix(toks, modifier)
+            yield toks[modifier], "empty-modifier", f"{name}: lists nothing", fix
         seen: set[str] = set()
-        for text, tok in entries:
+        for text, first, stop in entries:
             if text in seen:
-                yield tok, "duplicate-fact", f"{text} is listed twice after {modifier.text}:"
+                message = f"{text} is listed twice after {name}:"
+                yield toks[first], "duplicate-fact", message, _cut(toks, first, stop)
             seen.add(text)
 
 
@@ -90,10 +112,10 @@ def _single_applies(theory: Theory) -> Iterator[Command]:
 
 def check_methods(path: Path, theory: Theory) -> list[Finding]:
     findings = [
-        Finding.at(path, theory.lines, tok.start, code, message)
+        Finding.at(path, theory.lines, tok.start, code, message, fix)
         for command in theory.commands
         if command.name in _METHOD_COMMANDS
-        for tok, code, message in _findings(list(significant(command.tokens(theory.tokens))))
+        for tok, code, message, fix in _findings(list(significant(command.tokens(theory.tokens))))
     ]
     for command in _single_applies(theory):
         message = "one apply and done: write by"

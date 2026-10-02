@@ -5,14 +5,16 @@
       "line": 2,
       "column": 18,
       "code": "unfinished-proof",
-      "message": "sorry leaves the goal unproved"
+      "message": "sorry leaves the goal unproved",
+      "fix": ""
     },
     {
       "path": "A.thy",
       "line": 3,
       "column": 1,
       "code": "document-argument",
-      "message": "text expects a text argument, as in text \\<open>...\\<close>"
+      "message": "text expects a text argument, as in text \\<open>...\\<close>",
+      "fix": ""
     }
   ]
 }

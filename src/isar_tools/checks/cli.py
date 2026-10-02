@@ -7,6 +7,7 @@ from pathlib import Path
 
 from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding, unsuppressed
+from isar_tools.checks.fixes import MODES, apply_fixes, wanted
 from isar_tools.checks.links import LINK_SUFFIXES, check_links
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.methods import check_methods
@@ -39,7 +40,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "check",
         help="Check project and source hygiene",
         description="Check project and source hygiene. Groups: "
-        f"{', '.join(GROUPS)}; default: {', '.join(DEFAULT_GROUPS)}.",
+        f"{', '.join(GROUPS)}; default: {', '.join(DEFAULT_GROUPS)}; all: every group "
+        "(retired only when it has names).",
         epilog=f"codes:\n{codes}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -54,8 +56,16 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         "--group",
         dest="groups",
         action="append",
-        choices=GROUPS,
+        choices=(*GROUPS, "all"),
         help=f"run this group of checks (repeatable; default: {', '.join(DEFAULT_GROUPS)})",
+    )
+    check.add_argument(
+        "--fix",
+        choices=MODES,
+        metavar="MODE",
+        help="apply the fixes findings carry, until none is left: safe (a bare --fix) "
+        "keeps a theory's meaning; unsafe-only and all also take fixes only a build "
+        "can confirm",
     )
     check.add_argument(
         "--ignore",
@@ -120,12 +130,17 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
 
 
 def normalize_argv(argv: list[str]) -> list[str]:
-    """``check GROUP... PATH...`` means ``check --group GROUP... PATH...``."""
+    """``check GROUP... PATH...`` means ``check --group GROUP... PATH...``, and
+    a bare ``--fix`` means ``--fix=safe``, so ``--fix .`` reads ``.`` as a path."""
     args = list(argv)
     if args[:1] != ["check"]:
         return args
+    if "--fix" in args:
+        k = args.index("--fix")
+        named = k + 1 < len(args) and args[k + 1] in MODES
+        args[k : k + 1 + named] = [f"--fix={args[k + 1] if named else 'safe'}"]
     i = 1
-    while i < len(args) and args[i] in GROUPS:
+    while i < len(args) and args[i] in (*GROUPS, "all"):
         args[i : i + 1] = ["--group", args[i]]
         i += 2
     return args
@@ -143,8 +158,17 @@ def _retired(args: argparse.Namespace) -> frozenset[str]:
     return frozenset(names)
 
 
-def collect_findings(args: argparse.Namespace) -> list[Finding]:
+def _groups(args: argparse.Namespace) -> set[str]:
     groups: set[str] = set(args.groups or DEFAULT_GROUPS)
+    if "all" in groups:
+        groups = set(GROUPS)
+        if not (args.retired or args.retired_file):
+            groups.discard("retired")
+    return groups
+
+
+def collect_findings(args: argparse.Namespace) -> list[Finding]:
+    groups = _groups(args)
     retired = _retired(args) if "retired" in groups else None
     paths: list[Path] = args.paths
     linking = [p for p in paths if p.suffix in LINK_SUFFIXES and p.is_file()]
@@ -217,6 +241,7 @@ def findings_table(findings: list[Finding]) -> Table:
             Column("column", "column", True),
             Column("code", "code"),
             Column("message", "message"),
+            Column("fix", "fix"),
         ],
         [
             {
@@ -225,6 +250,7 @@ def findings_table(findings: list[Finding]) -> Table:
                 "column": f.column,
                 "code": f.code,
                 "message": f.message,
+                "fix": "" if f.fix is None else "safe" if f.fix.safe else "unsafe",
             }
             for f in findings
         ],
@@ -263,15 +289,46 @@ def summary(findings: list[Finding]) -> str:
     return f"{len(findings)} {noun}: {parts}"
 
 
+# A fix can make another finding, or its fix, appear; this bounds the rounds.
+_MAX_ROUNDS = 20
+
+
+def _fix(args: argparse.Namespace) -> int:
+    """Apply fixes round by round until a round applies none."""
+    total = 0
+    for _ in range(_MAX_ROUNDS):
+        applied = apply_fixes(collect_findings(args), args.fix)
+        if not applied:
+            break
+        total += applied
+    return total
+
+
+def fixable(findings: list[Finding]) -> str:
+    """``3 fixable with --fix, 2 more with --fix=all``; empty if none is."""
+    safe = sum(wanted(f.fix, "safe") for f in findings)
+    unsafe = sum(wanted(f.fix, "unsafe-only") for f in findings)
+    parts = [f"{safe} fixable with --fix"] if safe else []
+    if unsafe:
+        parts.append(f"{unsafe} {'more ' if safe else ''}with --fix=all")
+    return ", ".join(parts)
+
+
 def run(args: argparse.Namespace) -> int:
+    fixed = _fix(args) if args.fix else 0
     findings = collect_findings(args)
     if args.format == "text":
         style = Style.for_stream(args.color, sys.stdout)
         for f in findings:
             where = style(display_path(f.path), "bold") + style(f":{f.line}:{f.column}:", "dim")
             code = style(f.code, _GROUP_COLORS[CODES[f.code][0]], "bold")
-            print(f"{where} {code}: {f.message}")
+            mark = "" if f.fix is None else style(" [*]", "dim")
+            print(f"{where} {code}: {f.message}{mark}")
+        if args.fix:
+            print(f"fixed {fixed} {'finding' if fixed == 1 else 'findings'}", file=sys.stderr)
         print(summary(findings), file=sys.stderr)
+        if note := fixable(findings):
+            print(note, file=sys.stderr)
     else:
         RENDERERS[args.format]([findings_table(findings)], sys.stdout)
     return 1 if findings else 0

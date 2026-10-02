@@ -1,0 +1,6 @@
+exit 1
+T.thy:7:3: unfinished-proof: sorry leaves the goal unproved
+T.thy:11:71: unfinished-proof: sorry leaves the goal unproved
+--- stderr
+fixed 7 findings
+2 findings: 2 unfinished-proof

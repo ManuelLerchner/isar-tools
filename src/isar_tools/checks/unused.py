@@ -22,7 +22,7 @@ from bisect import bisect_left
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.project.hierarchy import bracket_group
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
@@ -30,7 +30,15 @@ from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IDENTIFIER_RE, Kind, Token
-from isar_tools.source.theory import Command, Theory, parse_theory, significant, unquote
+from isar_tools.source.theory import (
+    Command,
+    Header,
+    Name,
+    Theory,
+    parse_theory,
+    significant,
+    unquote,
+)
 
 _NAME = re.compile(rf"{IDENTIFIER_RE.pattern}(?:\.{IDENTIFIER_RE.pattern})*")
 _TEXT_KINDS = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE, Kind.VERBATIM, Kind.ALT_STRING})
@@ -276,6 +284,46 @@ def _cited_elsewhere(
     )
 
 
+def _line_end(text: str, offset: int) -> int:
+    """The offset after the newline that ends ``offset``'s line."""
+    newline = text.find("\n", offset)
+    return len(text) if newline < 0 else newline + 1
+
+
+def _names_more_facts(theory: Theory, command: Command) -> bool:
+    """Whether ``command`` names a further fact: ``lemma a: P and b: Q``."""
+    toks = list(significant(command.tokens(theory.tokens)))
+    return any(
+        t.text == "and"
+        and i + 2 < len(toks)
+        and toks[i + 1].kind is Kind.WORD
+        and toks[i + 2].text in (":", "[")
+        for i, t in enumerate(toks)
+    )
+
+
+def _delete_fact(theory: Theory, fact: Entity) -> Fix | None:
+    """Delete the command declaring ``fact`` with its proof, and the text
+    block right before it when nothing but document text follows: that block
+    is about this fact alone. A command declaring several facts stays."""
+    text, commands = theory.text, theory.commands
+    if _names_more_facts(theory, commands[fact.command_index]):
+        return None
+    start, end = fact.start, _line_end(text, fact.end)
+    later = [c for c in commands if theory.tokens[c.first].start >= fact.end]
+    before = commands[fact.command_index - 1] if fact.command_index > 0 else None
+    if (
+        before is not None
+        and before.kind is CommandKind.DOCUMENT_BODY
+        and (not later or later[0].kind in DOCUMENT or later[0].name == "end")
+    ):
+        start = text.rfind("\n", 0, theory.tokens[before.first].start) + 1
+    # One blank line stays where the fact sat between two.
+    if start >= 2 and text[start - 2 : start] == "\n\n" and text[end : end + 1] == "\n":
+        end += 1
+    return Fix((Edit(start, end),), safe=False)
+
+
 def _unused_facts(
     path: Path, theory: Theory, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
 ) -> Iterator[Finding]:
@@ -295,6 +343,7 @@ def _unused_facts(
             toks[index].start,
             "unused-lemma",
             f"{fact.command} {fact.name} is cited nowhere in the project",
+            _delete_fact(theory, fact),
         )
 
 
@@ -365,6 +414,23 @@ def _implicit(theory: Theory, command: Command) -> bool:
     return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
+def _drop_import(theory: Theory, header: Header, imp: Name, *, safe: bool) -> Fix | None:
+    """Delete ``imp`` from the header, and the space before it. The last
+    import stays. A zero-width edit at ``begin`` is part of every such fix, so
+    one round removes at most one import of a theory and the next round sees
+    how many are left."""
+    if len(header.imports) < 2 or header.begin < 0:
+        return None
+    text = theory.text
+    end = (
+        text.index('"', imp.start + 1) + 1 if text[imp.start] == '"' else imp.start + len(imp.text)
+    )
+    start = imp.start
+    while start > 0 and text[start - 1].isspace():
+        start -= 1
+    return Fix((Edit(start, end), Edit(header.begin, header.begin)), safe)
+
+
 def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:
     """``redundant-import``: an import another import reaches already;
     ``unused-import``: an import of which nothing it adds is used, by the
@@ -386,7 +452,8 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
         if via is not None:
             redundant.add(target)
             message = f"{imp.text} is imported through {via.text} already"
-            yield Finding.at(path, theory.lines, imp.start, "redundant-import", message)
+            fix = _drop_import(theory, header, imp, safe=True)
+            yield Finding.at(path, theory.lines, imp.start, "redundant-import", message, fix)
     # Removing every redundant import keeps the same theories reachable, and
     # only then does an import alone bring in what it adds.
     kept = [(imp, target) for imp, target in imports if target not in redundant]
@@ -398,7 +465,8 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
             continue
         if not any(index.provided(p) & used for p in exclusive):
             message = f"imports {imp.text}, but nothing uses what it adds"
-            yield Finding.at(path, theory.lines, imp.start, "unused-import", message)
+            fix = _drop_import(theory, header, imp, safe=False)
+            yield Finding.at(path, theory.lines, imp.start, "unused-import", message, fix)
 
 
 # Facts of a locale that hold all its assumptions at once.

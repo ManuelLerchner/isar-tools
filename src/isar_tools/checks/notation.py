@@ -49,7 +49,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.checks.locales import bound_names, term_text
 from isar_tools.checks.terms import (
     TEXTS,
@@ -66,7 +66,7 @@ from isar_tools.project.hierarchy import bracket_group, declarations, parse_mixf
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
 from isar_tools.project.names import source as statement_source
-from isar_tools.project.notation import INFIX, NotationError, expansion, template
+from isar_tools.project.notation import INFIX, NotationError, expansion, fill, template
 from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
@@ -144,6 +144,10 @@ class ShortForm:
     whole: bool = False
     # An adhoc_overloading instance: Isabelle resolves the generic name by type.
     overloaded: bool = False
+    # What to write: the notation with `_` slots, the generic name, or the
+    # abbreviation, applied to `parameters` in the order its left side has them.
+    short: str = ""
+    parameters: tuple[str, ...] = ()
 
     @property
     def applied(self) -> bool:
@@ -310,7 +314,7 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
         if shown is not None:
             name = unquote(part[0]).rpartition(".")[2]
             advice = f"its notation is {shown[0]}{_in_bundle(scope)}"
-            yield ShortForm((encode(name),), advice, shown[1], scope, path, index)
+            yield ShortForm((encode(name),), advice, shown[1], scope, path, index, short=shown[0])
 
 
 def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> Iterator[ShortForm]:
@@ -320,7 +324,7 @@ def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> It
         advice = f"it is overloaded as {generic}{_in_bundle(scope)}"
         instances = [t for t in part[1:] if t.kind in (Kind.WORD, Kind.STRING, Kind.CARTOUCHE)]
         for pattern in filter(None, (_pattern(unquote(t)) for t in instances)):
-            yield ShortForm(pattern, advice, 1, scope, path, index, overloaded=True)
+            yield ShortForm(pattern, advice, 1, scope, path, index, overloaded=True, short=generic)
 
 
 def _entity_scope(e: Entity) -> Scope:
@@ -358,6 +362,8 @@ def _abbreviation(theory: Theory, e: Entity, index: int, scope: Scope) -> ShortF
         variables=variables,
         code=ABBREVIATION_CODE,
         whole=has_operator(toks),
+        short=e.name,
+        parameters=tuple(parameters),
     )
 
 
@@ -382,7 +388,9 @@ def _declared_forms(theory: Theory, path: Path, blocks: list[Scope]) -> Iterator
         parameter = e.member and e.command in ("fixes", "for")
         advice = f"its notation is {shown[0]}"
         scope = _entity_scope(e)
-        yield ShortForm((encode(e.name),), advice, shown[1], scope, path, index, parameter)
+        yield ShortForm(
+            (encode(e.name),), advice, shown[1], scope, path, index, parameter, short=shown[0]
+        )
 
 
 def _opens_block(command: Command, args: list[Token]) -> bool:
@@ -604,6 +612,57 @@ def _passed_partially(toks: list[Token], start: int, end: int) -> bool:
     )
 
 
+def _wrap(toks: list[Token], start: int, stop: int, term: str) -> str:
+    return term if delimited(toks, start, stop) else f"({term})"
+
+
+def _args_after(toks: list[Token], text: str, i: int, n: int) -> tuple[list[str], int]:
+    """The source of the ``n`` arguments from ``toks[i]``, and the index after them."""
+    out: list[str] = []
+    for _ in range(n):
+        stop = argument_end(toks, i)
+        out.append(text[toks[i].start : toks[stop - 1].end])
+        i = stop
+    return out, i
+
+
+def _rewrite(form: ShortForm, toks: list[Token], text: str, j: int, end: int) -> Edit | None:
+    """The edit of ``text`` that writes the match ``toks[j:end]`` (with the
+    arguments the form takes) as its short form."""
+    at, after = toks[j].start, toks[end - 1].end
+    if form.code == ABBREVIATION_CODE:
+        source: dict[str, str] = {}
+        i = j
+        for item in form.pattern:
+            if item in form.variables:
+                stop = argument_end(toks, i)
+                source.setdefault(item, text[toks[i].start : toks[stop - 1].end])
+                i = stop
+            else:
+                i += 1
+        if not set(form.parameters) <= source.keys():
+            return None
+        term = " ".join([form.short, *(source[v] for v in form.parameters)])
+        return Edit(at, after, _wrap(toks, j, end, term) if form.parameters else term)
+    if form.overloaded:
+        return Edit(at, after, form.short)
+    notation = form.short
+    infix = notation.startswith("_ ") and notation.endswith(" _")
+    if form.arity == 0 and not infix:
+        return Edit(at, after, notation)  # a constant written without slots
+    if infix:
+        op = notation[2:-2]
+        if arguments(toks, end) < 2 or not heads(toks, j):
+            return Edit(at, after, f"({op})")
+        (left, right), stop = _args_after(toks, text, end, 2)
+        return Edit(at, toks[stop - 1].end, _wrap(toks, j, stop, f"{left} {op} {right}"))
+    args, stop = _args_after(toks, text, end, form.arity)
+    filled = fill(notation, "", args)  # `_shown` rejected what `fill` cannot do
+    # A mixfix with delimiters on both sides (`\<lbrakk>_\<rbrakk>`) reads as one unit.
+    closed = not notation.startswith("_") and not notation.endswith("_")
+    return Edit(at, toks[stop - 1].end, filled if closed else _wrap(toks, j, stop, filled))
+
+
 def _check(
     path: Path,
     found: _Analysis,
@@ -653,10 +712,16 @@ def _check(
                     continue  # the generic name could not be resolved there
                 if arguments(inner, consumed) >= form.arity:
                     written = " ".join(text[t.start : inner[consumed - 1].end].split())
+                    edit = _rewrite(form, inner, text, j, consumed)
+                    fix = None
+                    if edit is not None:
+                        moved = Edit(start + edit.start, start + edit.end, edit.text)
+                        fix = Fix((moved,), safe=False)
                     yield Finding.at(
                         path,
                         theory.lines,
                         start + t.start,
                         form.code,
                         f"{written} is written out; {form.advice}",
+                        fix,
                     )

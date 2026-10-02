@@ -17,7 +17,7 @@
 import re
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import LineIndex
 from isar_tools.source.theory import Theory, significant
@@ -62,19 +62,28 @@ def check_hygiene(path: Path, text: str) -> list[Finding]:
     lines = LineIndex(text)
     findings: list[Finding] = []
     # One finding per line is enough to find them.
+    offset = 0
     for number, line in enumerate(text.split("\n"), start=1):
         tab = line.find("\t")
         if tab >= 0:
-            findings.append(Finding(path, number, tab + 1, "tab", "tab character"))
+            # Two spaces, the indentation isar fmt uses.
+            spaces = tuple(
+                Edit(offset + i, offset + i + 1, "  ") for i, c in enumerate(line) if c == "\t"
+            )
+            fix = Fix(spaces, safe=True)
+            findings.append(Finding(path, number, tab + 1, "tab", "tab character", fix))
+        offset += len(line) + 1
     cr = text.find("\r")
     if cr >= 0:
         what = "CRLF line endings" if text[cr : cr + 2] == "\r\n" else "carriage return"
-        findings.append(Finding.at(path, lines, cr, "carriage-return", f"{what} (first here)"))
+        fix = Fix((Edit(0, len(text), text.replace("\r\n", "\n").replace("\r", "\n")),), True)
+        message = f"{what} (first here)"
+        findings.append(Finding.at(path, lines, cr, "carriage-return", message, fix))
     for m in _BIDI.finditer(text):
         char = f"U+{ord(m.group()):04X}"
-        findings.append(
-            Finding.at(path, lines, m.start(), "bidi-control", f"bidirectional control {char}")
-        )
+        fix = Fix((Edit(m.start(), m.end()),), safe=True)
+        message = f"bidirectional control {char}"
+        findings.append(Finding.at(path, lines, m.start(), "bidi-control", message, fix))
     stem = path.name.split(".", 1)[0].lower()
     if stem in _WINDOWS_RESERVED or _WINDOWS_FORBIDDEN.search(path.name):
         message = f"{path.name} cannot be checked out on Windows"

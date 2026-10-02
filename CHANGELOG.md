@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `isar check --fix[=safe|unsafe-only|all]` applies the fixes findings carry, round by
+  round until none is left; a fixable finding is marked `[*]`, and the JSON and CSV
+  output have a `fix` column. Safe fixes: `empty-modifier`, `duplicate-fact`,
+  `redundant-import`, `tab`, `carriage-return`, `bidi-control`, `non-ascii` outside ML.
+  Unsafe: `unused-import`, `spelled-out-notation`, `spelled-out-abbreviation`,
+  `unused-lemma`.
+- `isar check --group all` (or `isar check all`) runs every group; `retired` only when
+  it has names.
 - A theory file named on the command line now belongs to the project whose `ROOTS`
   lists its session directory, not just to that directory. `isar check unused` on one
   file no longer reports lemmas that theories in other sessions cite.
