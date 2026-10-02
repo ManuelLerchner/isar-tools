@@ -20,6 +20,7 @@ text \<open>See @{thm in_text}, not \<open>in_prose\<close>.\<close>
 lemma uses: "True" using cited_later by simp
 (* commented_out is cited nowhere *)
 lemma commented_out: "True" by simp
+lemma "quoted": "True" by simp
 end
 """
 T = r"""theory T imports Base begin
@@ -42,12 +43,13 @@ def test_unused_lemmas(make_project: MakeProject) -> None:
         (13, "lemma in_prose is cited nowhere in the project"),
         (15, "lemma uses is cited nowhere in the project"),
         (17, "lemma commented_out is cited nowhere in the project"),
+        (18, "lemma quoted is cited nowhere in the project"),
     ]
 
 
 def test_allow(make_project: MakeProject) -> None:
     lines = [line for line, _ in found(make_project, "inert", "Base.uses")]
-    assert lines == [4, 7, 13, 17]
+    assert lines == [4, 7, 13, 17, 18]
 
 
 def test_antiquotations() -> None:
@@ -56,3 +58,5 @@ def test_antiquotations() -> None:
         "@{thm x[of {y}]}",
         r"\<^const>\<open>c \<open>d\<close>\<close>",
     ]
+    assert list(antiquotations("@{thm x")) == [(0, 7)]
+    assert list(antiquotations(r"\<^const>\<open>c")) == [(0, 17)]

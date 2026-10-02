@@ -29,7 +29,7 @@ from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_source
 from isar_tools.source.keywords import DOCUMENT
 from isar_tools.source.lexer import IDENTIFIER_RE, Kind, Token
-from isar_tools.source.theory import Theory, parse_theory, significant
+from isar_tools.source.theory import Theory, parse_theory, significant, unquote
 
 _NAME = re.compile(rf"{IDENTIFIER_RE.pattern}(?:\.{IDENTIFIER_RE.pattern})*")
 _TEXT_KINDS = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE, Kind.VERBATIM, Kind.ALT_STRING})
@@ -127,32 +127,20 @@ def uses(theory: Theory) -> Iterator[tuple[str, int]]:
                         yield part, offset
 
 
-def _name_token(theory: Theory, starts: list[int], entity: Entity) -> int:
-    """Index of the token naming ``entity`` in ``theory.tokens``, whose
-    offsets are ``starts``."""
-    for i in range(bisect_left(starts, entity.start), len(theory.tokens)):
-        tok = theory.tokens[i]
-        if tok.start >= entity.end:
-            break
-        if tok.kind is Kind.WORD and tok.text == entity.name:
-            return i
-    return -1
+def _name_token(toks: list[Token], starts: list[int], entity: Entity) -> int:
+    """Index of the token naming ``entity`` in ``toks``, whose offsets are
+    ``starts``; -1 if none."""
+    span = range(bisect_left(starts, entity.start), bisect_left(starts, entity.end))
+    return next((i for i in span if unquote(toks[i]) == entity.name), -1)
 
 
-def _registers(theory: Theory, index: int) -> bool:
-    """Whether the fact named at token ``index`` carries an attribute that
+def _registers(toks: list[Token], index: int) -> bool:
+    """Whether the fact named at ``toks[index]`` carries an attribute that
     puts it to use: ``foo [simp]:``."""
-    toks: list[Token] = []
-    for tok in theory.tokens[index + 1 :]:
-        if tok.kind not in (Kind.SPACE, Kind.NEWLINE, Kind.COMMENT):
-            toks.append(tok)
-            if len(toks) > 1 and toks[0].text != "[":
-                break
-            if tok.text == "]":
-                break
-    if not toks or toks[0].text != "[":
+    rest = toks[index + 1 :]
+    if [t.text for t in rest[:1]] != ["["]:
         return False
-    group, _ = bracket_group(toks, 0)
+    group, _ = bracket_group(rest, 0)
     names = [group[i + 1].text for i, t in enumerate(group[:-1]) if t.text in ("[", ",")]
     return any(name not in _INERT_ATTRIBUTES for name in names)
 
@@ -204,12 +192,13 @@ def check_unused(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) ->
 def _unused_facts(
     r: _Read, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
 ) -> Iterator[Finding]:
-    starts = [t.start for t in r.theory.tokens]
+    toks = list(significant(r.theory.tokens))
+    starts = [t.start for t in toks]
     for fact in r.facts:
         if fact.name in allowed or fact.qualified in allowed:
             continue
-        index = _name_token(r.theory, starts, fact)
-        if index < 0 or _registers(r.theory, index):
+        index = _name_token(toks, starts, fact)
+        if index < 0 or _registers(toks, index):
             continue
         if any(
             path != r.path or not fact.start <= offset < fact.end
@@ -219,7 +208,7 @@ def _unused_facts(
         yield Finding.at(
             r.path,
             r.theory.lines,
-            r.theory.tokens[index].start,
+            toks[index].start,
             "unused-lemma",
             f"{fact.command} {fact.name} is cited nowhere in the project",
         )
