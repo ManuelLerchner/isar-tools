@@ -262,3 +262,12 @@ def test_notation_group(make_project: MakeProject, capsys: pytest.CaptureFixture
     status, out, _ = run(capsys, "notation", str(base / "T.thy"))
     assert status == 1
     assert out.endswith("spelled-out-notation: f is written out; its notation is \\<phi>\n")
+
+
+def test_methods_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
+    base = make_project(
+        {"T.thy": 'theory T imports Main begin\nlemma "True" by (simp add:)\nend\n'}
+    )
+    status, out, _ = run(capsys, "methods", str(base / "T.thy"))
+    assert status == 1
+    assert out.endswith("T.thy:2:23: empty-modifier: add: lists nothing\n")

@@ -102,6 +102,7 @@ isar check prose src/             # names cited in text blocks; raw _ that LaTeX
 isar check links site/index.html --browser-info browser_info   # links into HTML theories
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check notation src/          # constants written out despite their notation
+isar check methods src/           # (simp add:), facts listed twice
 isar check --ignore oops --format json
 ```
 
@@ -116,6 +117,7 @@ isar check --ignore oops --format json
 | `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
+| `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |
 | `retired`   | `retired-identifier` (opt-in)                                                                                                                                  |
 | `prose`     | `prose-reference`, `prose-underscore` (opt-in)                                                                                                                 |
 | `links`     | `broken-link`, `broken-anchor`, `anchor-name` (opt-in)                                                                                                         |

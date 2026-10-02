@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
+  nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
+  one modifier.
 - `isar check notation` (opt-in, heuristic): `spelled-out-notation` reports a
   constant written out in a term where the project gave it a short form: a mixfix on
   its declaration, a `notation` command, or `adhoc_overloading`. Bundles, locales, and
