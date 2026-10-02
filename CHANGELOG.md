@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `isar check attributes` reports `inline-declare`: attributes on a separate
+  `declare` immediately following their definition, named theorem, or inductive
+  rules. `--fix=all` moves common registration attributes inline; custom attributes
+  and declarations containing comments stay report-only. Later configuration,
+  imported facts, deletions, and theorem transformations are excluded. Use
+  `(* isar-ignore: inline-declare *)` for intentional separation.
+
 ## 0.7.1 (2026-10-02)
 
 - `check.groups = ["all"]` in the configuration runs every group, as `--group all` does;

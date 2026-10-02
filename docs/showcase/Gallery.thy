@@ -66,4 +66,7 @@ lemma citations: "Suc 0 = 1"
   using uncited join_zero sum_list old arrow searching reordered twice
   by simp
 
+definition inline_zero :: nat where "inline_zero = 0"
+declare inline_zero_def [code_unfold]
+
 end
