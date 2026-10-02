@@ -271,3 +271,10 @@ def test_methods_group(make_project: MakeProject, capsys: pytest.CaptureFixture[
     status, out, _ = run(capsys, "methods", str(base / "T.thy"))
     assert status == 1
     assert out.endswith("T.thy:2:23: empty-modifier: add: lists nothing\n")
+
+
+def test_unused_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
+    base = make_project({"T.thy": 'theory T imports Main begin\nlemma l: "True" by simp\nend\n'})
+    status, out, _ = run(capsys, "unused", str(base / "T.thy"))
+    assert status == 1
+    assert out.endswith("unused-lemma: lemma l is cited nowhere in the project\n")

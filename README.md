@@ -103,6 +103,7 @@ isar check links site/index.html --browser-info browser_info   # links into HTML
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check notation src/          # constants written out despite their notation
 isar check methods src/           # (simp add:), facts listed twice
+isar check unused src/            # lemmas nothing cites
 isar check --ignore oops --format json
 ```
 
@@ -115,6 +116,7 @@ isar check --ignore oops --format json
 | `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
 | `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
+| `unused`    | `unused-lemma` (opt-in, heuristic)                                                                                                                             |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |
@@ -149,6 +151,14 @@ application with enough of them is reported; an infix (`(op)`) or a notation
 without slots is reported anywhere. Bound and fixed variables, record field
 updates, and a declaration's own equations are skipped. `--allow NAME` accepts
 a constant. See `isar_tools/checks/notation.py`.
+
+`unused` reports a named fact no other text of the project cites: by name,
+qualified (`T.foo`, `q.foo` of an interpretation), with arguments
+(`foo(2)`, `foo[OF ...]`), or in a document antiquotation (`@{thm foo}`). A
+fact with an attribute that registers it (`[simp]`, `[intro]`, a
+`named_theorems` collection) is used without its name and is never reported.
+Main results cited only outside the project take `--allow NAME` or an
+`isar-ignore` comment.
 
 `retired` reports identifiers the project removed on purpose, listed in
 `check.retired`, in the file `check.retired-file` names (one per line, `#`

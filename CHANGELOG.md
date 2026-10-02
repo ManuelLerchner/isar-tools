@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `isar check unused` (opt-in, heuristic): `unused-lemma` reports a named fact
+  nothing in the project cites. Facts with an attribute such as `[simp]` count as
+  used; `--allow` keeps a main result cited only elsewhere.
 - `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
   nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
   one modifier.

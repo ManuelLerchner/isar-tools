@@ -21,6 +21,7 @@ from isar_tools.checks.sources import (
     invalid_utf8,
 )
 from isar_tools.checks.theory import check_proofs, check_symbols, check_syntax
+from isar_tools.checks.unused import check_unused
 from isar_tools.config import add_exclude_option
 from isar_tools.project.model import Project
 from isar_tools.project.workspace import InputError, SourceFile, add_include_option, load
@@ -71,7 +72,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         action="append",
         default=[],
         metavar="NAME",
-        help="locales, notation, prose: do not report this identifier (repeatable)",
+        help="locales, notation, prose, unused: do not report this identifier (repeatable)",
     )
     check.add_argument(
         "--retired",
@@ -184,6 +185,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
         findings += check_locales(readable, allow=args.allow)
     if "notation" in groups:
         findings += check_notation(readable, allow=args.allow)
+    if "unused" in groups:
+        findings += check_unused(readable, allow=args.allow)
     if "prose" in groups:
         findings += check_prose(readable, parsed, allow=args.allow)
     if "links" in groups:
@@ -226,6 +229,7 @@ _GROUP_COLORS = {
     "docs": "green",
     "locales": "blue",
     "notation": "cyan",
+    "unused": "magenta",
     "hygiene": "magenta",
     "leftovers": "yellow",
     "methods": "yellow",
