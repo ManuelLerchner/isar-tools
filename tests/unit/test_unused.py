@@ -92,3 +92,31 @@ def test_imports(make_project: MakeProject) -> None:
         ("T.thy", 2, 19, "unused-import", "imports E, but uses nothing it adds"),
         ("U.thy", 1, 18, "unused-import", "imports C, but uses nothing it adds"),
     ]
+
+
+def test_assumptions(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+locale loc =
+  fixes f :: "nat \<Rightarrow> nat"
+  assumes cited_a: "f 0 = 0" and spare_a: "f 1 = 1" and simp_a [simp]: "f 2 = 2"
+    and "f 3 = 3"
+lemma (in loc) "f 0 = 0" by (rule cited_a)
+locale whole =
+  fixes g :: nat
+  assumes spare_w: "g = 0"
+lemma (in whole) "True" using whole_axioms by simp
+class cls =
+  fixes c :: 'a
+  assumes spare_c: "c = c"
+end
+""",
+        }
+    )
+    findings = check_unused(collect([base / "T.thy"]))
+    assert [(f.line, f.message) for f in findings if f.code == "unused-assumption"] == [
+        (4, "assumption spare_a of locale loc is cited nowhere; the locale may assume less"),
+        (13, "assumption spare_c of class cls is cited nowhere; the class may assume less"),
+    ]

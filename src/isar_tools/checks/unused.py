@@ -234,8 +234,19 @@ def check_unused(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) ->
         for path in paths:
             theory = index.theory(path)
             findings += _unused_facts(path, theory, cited, allowed)
+            findings += _unused_assumptions(path, theory, cited, allowed)
             findings += _unused_imports(path, theory, index)
     return findings
+
+
+def _cited_elsewhere(
+    cited: dict[str, list[tuple[Path, int]]], name: str, path: Path, entity: Entity
+) -> bool:
+    """Whether ``name`` is used outside the extent of ``entity``."""
+    return any(
+        where != path or not entity.start <= offset < entity.end
+        for where, offset in cited.get(name, ())
+    )
 
 
 def _unused_facts(
@@ -249,10 +260,7 @@ def _unused_facts(
         index = _name_token(toks, starts, fact)
         if index < 0 or _registers(toks, index):
             continue
-        if any(
-            where != path or not fact.start <= offset < fact.end
-            for where, offset in cited.get(fact.name, ())
-        ):
+        if _cited_elsewhere(cited, fact.name, path, fact):
             continue
         yield Finding.at(
             path,
@@ -356,3 +364,32 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
         if not any(index.provided(p) & used for p in exclusive):
             message = f"imports {imp.text}, but uses nothing it adds"
             yield Finding.at(path, theory.lines, imp.start, "unused-import", message)
+
+
+# Facts of a locale that hold all its assumptions at once.
+_WHOLE = ("{}_axioms", "{}_def", "{}.axioms", "{}_axioms_def")
+
+
+def _unused_assumptions(
+    path: Path, theory: Theory, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
+) -> Iterator[Finding]:
+    """``unused-assumption``: a named assumption of a locale or class that no
+    proof cites, while nothing cites the locale's assumptions as a whole."""
+    toks = list(significant(theory.tokens))
+    starts = [t.start for t in toks]
+    for e in entities(theory, _theory_name(theory, path), path):
+        if not (e.member and e.command == "assumes") or e.name in allowed:
+            continue
+        locale = e.scope
+        if any(_cited_elsewhere(cited, whole.format(locale), path, e) for whole in _WHOLE):
+            continue
+        index = _name_token(toks, starts, e)
+        if index < 0 or _registers(toks, index) or _cited_elsewhere(cited, e.name, path, e):
+            continue
+        kind = "class" if locale.endswith("_class") else "locale"
+        message = (
+            f"assumption {e.name} of {kind} {locale.removesuffix('_class')} is cited nowhere; "
+            f"the {kind} may assume less"
+        )
+        start = toks[index].start
+        yield Finding.at(path, theory.lines, start, "unused-assumption", message)
