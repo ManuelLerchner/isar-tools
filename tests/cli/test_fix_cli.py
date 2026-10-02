@@ -40,12 +40,11 @@ def test_fix_snapshots(
 def test_hygiene_fixes(
     make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    base = make_project(
-        {
-            "ROOT": "session S = HOL + theories H\n",
-            "H.thy": "theory H imports Main begin\r\ntext \\<open>x\u202ey\\<close>\r\n"
-            'lemma h: "True"\r\n\tby simp\r\nend\r\n',
-        }
+    base = make_project({"ROOT": "session S = HOL + theories H\n"})
+    # Bytes, so no platform translates the line endings under test.
+    (base / "H.thy").write_bytes(
+        b"theory H imports Main begin\r\ntext \\<open>x\xe2\x80\xaey\\<close>\r\n"
+        b'lemma h: "True"\r\n\tby simp\r\nend\r\n'
     )
     monkeypatch.chdir(base)
     assert main(["check", "hygiene", "--fix", "."]) == 0
