@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `isar check leftovers` reports `defer` and `prefer` (`goal-reordering`) and `back`
+  (`backtracking`); `isar check methods` reports `single-apply`, a goal proved by one
+  `apply` and `done`, which `by` states in one step.
 - `isar check redundant` (opt-in, heuristic): `duplicate-lemma` reports a lemma that
   states an earlier one again up to variable names; `subsumed-lemma` one that is an
   instance of another, which it can cite instead.
