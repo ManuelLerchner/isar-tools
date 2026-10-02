@@ -22,7 +22,7 @@ from bisect import bisect_left
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.project.hierarchy import bracket_group
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
@@ -30,7 +30,15 @@ from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IDENTIFIER_RE, Kind, Token
-from isar_tools.source.theory import Command, Theory, parse_theory, significant, unquote
+from isar_tools.source.theory import (
+    Command,
+    Header,
+    Name,
+    Theory,
+    parse_theory,
+    significant,
+    unquote,
+)
 
 _NAME = re.compile(rf"{IDENTIFIER_RE.pattern}(?:\.{IDENTIFIER_RE.pattern})*")
 _TEXT_KINDS = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE, Kind.VERBATIM, Kind.ALT_STRING})
@@ -365,6 +373,24 @@ def _implicit(theory: Theory, command: Command) -> bool:
     return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
+def _drop_import(theory: Theory, header: Header, imp: Name, *, safe: bool) -> Fix | None:
+    """Delete ``imp`` from the header, and the space before it. Redundant
+    imports can all go at once: the theory graph is acyclic, so the kept ones
+    still reach every theory. An unused one cannot, since every import of a
+    theory may be unused: a zero-width edit at ``begin`` makes such fixes
+    overlap, so one round removes one, and the last import stays."""
+    if len(header.imports) < 2:
+        return None
+    text = theory.text
+    quoted = text[imp.start] == '"'
+    end = text.index('"', imp.start + 1) + 1 if quoted else imp.start + len(imp.text)
+    start = imp.start
+    while start > 0 and text[start - 1].isspace():
+        start -= 1
+    one_per_round = () if safe else (Edit(header.begin, header.begin),)
+    return Fix((Edit(start, end), *one_per_round), safe)
+
+
 def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:
     """``redundant-import``: an import another import reaches already;
     ``unused-import``: an import of which nothing it adds is used, by the
@@ -386,7 +412,8 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
         if via is not None:
             redundant.add(target)
             message = f"{imp.text} is imported through {via.text} already"
-            yield Finding.at(path, theory.lines, imp.start, "redundant-import", message)
+            fix = _drop_import(theory, header, imp, safe=True)
+            yield Finding.at(path, theory.lines, imp.start, "redundant-import", message, fix)
     # Removing every redundant import keeps the same theories reachable, and
     # only then does an import alone bring in what it adds.
     kept = [(imp, target) for imp, target in imports if target not in redundant]
@@ -398,7 +425,8 @@ def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Findi
             continue
         if not any(index.provided(p) & used for p in exclusive):
             message = f"imports {imp.text}, but nothing uses what it adds"
-            yield Finding.at(path, theory.lines, imp.start, "unused-import", message)
+            fix = _drop_import(theory, header, imp, safe=False)
+            yield Finding.at(path, theory.lines, imp.start, "unused-import", message, fix)
 
 
 # Facts of a locale that hold all its assumptions at once.

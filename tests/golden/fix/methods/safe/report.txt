@@ -1,0 +1,7 @@
+exit 1
+M.thy:6:7: duplicate-lemma: empty_among states empty_alone (M.thy:5) again
+M.thy:7:7: duplicate-lemma: twice states empty_alone (M.thy:5) again
+M.thy:8:7: duplicate-lemma: twice_attr states empty_alone (M.thy:5) again
+--- stderr
+fixed 4 findings
+3 findings: 3 duplicate-lemma

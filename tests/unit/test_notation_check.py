@@ -260,3 +260,20 @@ def test_included_abbreviations(make_project: MakeProject) -> None:
     )
     findings = check_notation(collect([base / "T.thy"], [base / "lib"]))
     assert [(f.line, f.message.split(" is written out")[0]) for f in findings] == [(2, "lib_c")]
+
+
+def test_abbreviation_fix_needs_every_parameter(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+definition step :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "step a b = a"
+abbreviation both where "both x y \<equiv> step x x"
+lemma "step a a = 0" sorry
+end
+""",
+        }
+    )
+    [finding] = check_notation(collect([base / "T.thy"]))
+    assert finding.code == "spelled-out-abbreviation"
+    assert finding.fix is None  # y is not in the term, so the rewrite cannot name it

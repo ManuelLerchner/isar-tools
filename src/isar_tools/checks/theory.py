@@ -3,7 +3,7 @@ and symbol encoding."""
 
 from pathlib import Path
 
-from isar_tools.checks.findings import Finding
+from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import Kind
 from isar_tools.source.symbols import TO_ASCII
@@ -93,10 +93,37 @@ def check_syntax(path: Path, theory: Theory) -> list[Finding]:
     return findings
 
 
+# Commands whose text is ML, where a symbol and its UTF-8 spelling are
+# different strings: replacing one by the other is no longer a safe fix.
+_ML_TEXT = frozenset(
+    {
+        "setup",
+        "local_setup",
+        "declaration",
+        "syntax_declaration",
+        "oracle",
+        "parse_translation",
+        "print_translation",
+        "parse_ast_translation",
+        "print_ast_translation",
+        "typed_print_translation",
+    }
+)
+
+
+def _ml_spans(theory: Theory) -> list[tuple[int, int]]:
+    return [
+        (theory.tokens[c.first].start, theory.tokens[c.stop - 1].end)
+        for c in theory.commands
+        if "ML" in c.name or c.name.endswith("_setup") or c.name in _ML_TEXT
+    ]
+
+
 def check_symbols(path: Path, theory: Theory, *, include_comments: bool = False) -> list[Finding]:
     """Non-ASCII characters, which batch builds can reject where the editor
     accepted them. ``(* *)`` comments are skipped unless ``include_comments``."""
     findings: list[Finding] = []
+    ml = _ml_spans(theory)
     for tok in theory.tokens:
         if tok.kind is Kind.COMMENT and not include_comments:
             continue
@@ -105,13 +132,17 @@ def check_symbols(path: Path, theory: Theory, *, include_comments: bool = False)
                 continue
             ascii_ = TO_ASCII.get(ch)
             hint = f"; write {ascii_}" if ascii_ else "; it has no Isabelle symbol spelling"
+            at = tok.start + i
+            safe = not any(a <= at < b for a, b in ml)
+            fix = Fix((Edit(at, at + 1, ascii_),), safe) if ascii_ else None
             findings.append(
                 Finding.at(
                     path,
                     theory.lines,
-                    tok.start + i,
+                    at,
                     "non-ascii",
                     f"non-ASCII character {ch!r} (U+{ord(ch):04X}){hint}",
+                    fix,
                 )
             )
     return findings

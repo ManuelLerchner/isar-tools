@@ -152,3 +152,16 @@ def test_a_file_argument_sees_its_whole_project(make_project: MakeProject) -> No
         }
     )
     assert check_unused(collect([base / "lib/L.thy"])) == []
+
+
+def test_the_last_import_has_no_fix(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A T",
+            "A.thy": 'theory A imports Main begin\ndefinition a :: nat where "a = 0"\nend',
+            "T.thy": 'theory T imports A begin\nlemma t [simp]: "True" by simp\nend',
+        }
+    )
+    [finding] = check_unused(collect([base / "T.thy"]))
+    assert finding.code == "unused-import"
+    assert finding.fix is None

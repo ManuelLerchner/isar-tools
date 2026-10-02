@@ -2,11 +2,29 @@
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.source.files import read_source
 from isar_tools.source.lexer import Kind, LineIndex, tokenize
+
+
+@dataclass(frozen=True)
+class Edit:
+    """Replace the text between two offsets of a file."""
+
+    start: int
+    end: int
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class Fix:
+    """The edits that resolve a finding, all or none. A safe fix keeps the
+    theory's meaning; an unsafe one should, but only a build can tell."""
+
+    edits: tuple[Edit, ...]
+    safe: bool
 
 
 @dataclass(frozen=True, order=True)
@@ -16,10 +34,19 @@ class Finding:
     column: int  # 1-based
     code: str
     message: str
+    fix: Fix | None = field(default=None, compare=False)
 
     @classmethod
-    def at(cls, path: Path, lines: LineIndex, offset: int, code: str, message: str) -> "Finding":
-        return cls(path, lines.line(offset), lines.column(offset), code, message)
+    def at(
+        cls,
+        path: Path,
+        lines: LineIndex,
+        offset: int,
+        code: str,
+        message: str,
+        fix: Fix | None = None,
+    ) -> "Finding":
+        return cls(path, lines.line(offset), lines.column(offset), code, message, fix)
 
 
 # code -> (group, description). Codes are stable identifiers for --ignore and

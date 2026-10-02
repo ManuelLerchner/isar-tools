@@ -1,0 +1,4 @@
+exit 0
+--- stderr
+fixed 2 findings
+no findings

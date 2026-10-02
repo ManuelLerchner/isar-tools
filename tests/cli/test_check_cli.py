@@ -70,7 +70,7 @@ def test_json(project: Path, capsys: pytest.CaptureFixture[str], golden: Golden)
 def test_clean(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert run(capsys, "lib", "--format", "csv") == (
         0,
-        "path,line,column,code,message\n",
+        "path,line,column,code,message,fix\n",
         "",
     )
 
@@ -261,7 +261,7 @@ def test_notation_group(make_project: MakeProject, capsys: pytest.CaptureFixture
     )
     status, out, _ = run(capsys, "notation", str(base / "T.thy"))
     assert status == 1
-    assert out.endswith("spelled-out-notation: f is written out; its notation is \\<phi>\n")
+    assert out.endswith("spelled-out-notation: f is written out; its notation is \\<phi> [*]\n")
 
 
 def test_methods_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
@@ -270,7 +270,7 @@ def test_methods_group(make_project: MakeProject, capsys: pytest.CaptureFixture[
     )
     status, out, _ = run(capsys, "methods", str(base / "T.thy"))
     assert status == 1
-    assert out.endswith("T.thy:2:23: empty-modifier: add: lists nothing\n")
+    assert out.endswith("T.thy:2:23: empty-modifier: add: lists nothing [*]\n")
 
 
 def test_unused_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:

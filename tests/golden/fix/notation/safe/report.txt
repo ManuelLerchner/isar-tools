@@ -1,0 +1,13 @@
+exit 1
+T.thy:6:4: spelled-out-notation: widen is written out; its notation is _ \<nabla> _ [*]
+T.thy:6:13: spelled-out-notation: widen is written out; its notation is _ \<nabla> _ [*]
+T.thy:6:30: spelled-out-notation: get is written out; its notation is _\<langle>_\<rangle> [*]
+T.thy:6:56: spelled-out-notation: gamma_int is written out; it is overloaded as gamma [*]
+T.thy:6:70: spelled-out-abbreviation: step (f y) (f y) is written out; it is the abbreviation twice [*]
+T.thy:7:3: unfinished-proof: sorry leaves the goal unproved
+T.thy:11:22: spelled-out-notation: widen is written out; its notation is _ \<nabla> _ [*]
+T.thy:11:66: unfinished-proof: sorry leaves the goal unproved
+--- stderr
+fixed 0 findings
+8 findings: 5 spelled-out-notation, 2 unfinished-proof, 1 spelled-out-abbreviation
+6 with --fix=all
