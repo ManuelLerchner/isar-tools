@@ -307,25 +307,18 @@ def _registers(args: list[Token]) -> bool:
 
 
 def _lemmas(theory: Theory, path: Path, constants: frozenset[str]) -> Iterator[_Lemma]:
-    by_line: dict[int, int] = {}
-    for i, command in enumerate(theory.commands):
-        by_line.setdefault(theory.lines.line(theory.start(command)), i)
     name = theory.header.name.text if theory.header else path.stem
     for e in entities(theory, name, path):
         if e.kind != "fact" or e.member or e.command not in _GOALS:
             continue
-        index = by_line[e.line]
+        index = e.command_index
         toks = list(significant(theory.commands[index].tokens(theory.tokens)))
-        at = next((i for i, t in enumerate(toks) if t.kind is Kind.WORD and t.text == e.name), -1)
-        if at < 0:
-            continue
+        at = next(i for i, t in enumerate(toks) if unquote(t) == e.name)
         rest = toks[at + 1 :]
         registers = _registers(rest)
-        if rest and rest[0].text == "[":
+        if rest[0].text == "[":
             rest = rest[bracket_group(rest, 0)[1] :]
-        if not rest or rest[0].text != ":":
-            continue
-        found = statement(rest[1:], constants)
+        found = statement(rest[1:], constants)  # after the `:`
         if found is not None:
             offset = toks[at].start
             yield _Lemma(

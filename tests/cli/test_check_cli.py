@@ -278,3 +278,16 @@ def test_unused_group(make_project: MakeProject, capsys: pytest.CaptureFixture[s
     status, out, _ = run(capsys, "unused", str(base / "T.thy"))
     assert status == 1
     assert out.endswith("unused-lemma: lemma l is cited nowhere in the project\n")
+
+
+def test_redundant_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
+    base = make_project(
+        {
+            "T.thy": (
+                'theory T imports Main begin\nlemma a: "x = x" sorry\nlemma b: "y = y" sorry\nend\n'
+            )
+        }
+    )
+    status, out, _ = run(capsys, "redundant", str(base / "T.thy"))
+    assert status == 1
+    assert out.endswith("duplicate-lemma: b states a (T.thy:2) again\n")
