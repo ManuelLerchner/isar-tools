@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 from isar_tools.checks.docs import check_docs
-from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding
+from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding, unsuppressed
 from isar_tools.checks.links import LINK_SUFFIXES, check_links
 from isar_tools.checks.locales import check_locales
 from isar_tools.checks.project import check_project
@@ -184,7 +184,7 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
         projects = workspace.projects or [Project.load(Path(), args.include)]
         findings += check_links(linking, projects, args.browser_info, args.link_base)
     ignored = set(args.ignore)
-    return sorted({f for f in findings if f.code not in ignored})
+    return sorted(unsuppressed({f for f in findings if f.code not in ignored}))
 
 
 def findings_table(findings: list[Finding]) -> Table:

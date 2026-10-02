@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `isar check`: a `(* isar-ignore *)` comment silences the findings on its line, or
+  on the next line when it stands alone; `(* isar-ignore: CODE, ... *)` silences only
+  those codes.
+
 ## 0.4.0 (2026-10-01)
 
 - `isar project notation TOML`: the symbols a project's declarations introduce, as
