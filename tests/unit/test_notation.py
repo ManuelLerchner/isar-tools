@@ -57,12 +57,15 @@ def test_shapes(found: dict[str, Entity]) -> None:
 
 
 def test_templates(found: dict[str, Entity]) -> None:
-    assert template(found["T.sq"]) == r"\<lfloor>_\<rfloor>\<^sup>2"
-    assert template(found["T.widening_class.widen"]) == r"_ \<nabla> _"
-    assert template(found["T.plain"]) == ""
+    def of(name: str) -> str:
+        return template(found[name].mixfix, found[name].notation)
+
+    assert of("T.sq") == r"\<lfloor>_\<rfloor>\<^sup>2"
+    assert of("T.widening_class.widen") == r"_ \<nabla> _"
+    assert of("T.plain") == ""
     for name in ("T.all_n", "T.weight"):
         with pytest.raises(NotationError, match="the mixfix"):
-            template(found[name])
+            of(name)
 
 
 def test_fill_slots_then_applied_arguments() -> None:

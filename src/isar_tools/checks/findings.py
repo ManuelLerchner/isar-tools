@@ -55,6 +55,10 @@ CODES: dict[str, tuple[str, str]] = {
         "locales",
         "a locale or context header term names something defined nowhere (heuristic)",
     ),
+    "spelled-out-notation": (
+        "notation",
+        "a constant written out where the project gave it notation or overloading (heuristic)",
+    ),
     "tab": ("hygiene", "a tab character"),
     "carriage-return": ("hygiene", "a carriage return (CRLF or CR line endings)"),
     "bidi-control": ("hygiene", "a bidirectional Unicode control character"),
@@ -77,6 +81,7 @@ GROUPS = (
     "symbols",
     "docs",
     "locales",
+    "notation",
     "hygiene",
     "leftovers",
     "retired",

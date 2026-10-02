@@ -29,6 +29,8 @@ from isar_tools.source.lexer import Kind, tokenize
 from isar_tools.source.symbols import decode
 from isar_tools.source.theory import significant, unquote
 
+INFIX = frozenset({"infix", "infixl", "infixr"})
+
 
 class NotationError(ValueError):
     """A declaration whose notation cannot be read off it."""
@@ -66,17 +68,18 @@ def shape(entity: Entity) -> Shape:
     raise NotationError(f"a {command} member of {scope} is not supported")
 
 
-def template(entity: Entity) -> str:
-    """The notation a mixfix writes, with ``_`` for each argument slot:
-    ``infixl "+" 65`` is ``_ + _``; "" without a mixfix."""
-    if not entity.mixfix:
+def template(mixfix: str, notation: str) -> str:
+    """The notation a mixfix (with its first string ``notation``) writes, with
+    ``_`` for each argument slot: ``infixl "+" 65`` is ``_ + _``; "" without a
+    mixfix."""
+    if not mixfix:
         return ""
-    keyword = entity.mixfix.split(maxsplit=1)[0]
-    if keyword in ("infix", "infixl", "infixr") and entity.notation:
-        return f"_ {entity.notation} _"
-    if keyword in ("binder", "structure") or not entity.notation:
-        raise NotationError(f"the mixfix ({entity.mixfix}) is not supported")
-    return entity.notation
+    keyword = mixfix.split(maxsplit=1)[0]
+    if keyword in INFIX and notation:
+        return f"_ {notation} _"
+    if keyword in ("binder", "structure") or not notation:
+        raise NotationError(f"the mixfix ({mixfix}) is not supported")
+    return notation
 
 
 def _block_end(text: str, i: int) -> int:

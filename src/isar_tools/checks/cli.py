@@ -9,6 +9,7 @@ from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding, unsuppressed
 from isar_tools.checks.links import LINK_SUFFIXES, check_links
 from isar_tools.checks.locales import check_locales
+from isar_tools.checks.notation import check_notation
 from isar_tools.checks.project import check_project
 from isar_tools.checks.prose import check_prose
 from isar_tools.checks.retired import check_retired, read_retired
@@ -69,7 +70,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         action="append",
         default=[],
         metavar="NAME",
-        help="locales, prose: do not report this identifier (repeatable)",
+        help="locales, notation, prose: do not report this identifier (repeatable)",
     )
     check.add_argument(
         "--retired",
@@ -178,6 +179,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
                 findings += check_docs(source.path, theory)
     if "locales" in groups:
         findings += check_locales(readable, allow=args.allow)
+    if "notation" in groups:
+        findings += check_notation(readable, allow=args.allow)
     if "prose" in groups:
         findings += check_prose(readable, parsed, allow=args.allow)
     if "links" in groups:
@@ -219,6 +222,7 @@ _GROUP_COLORS = {
     "symbols": "cyan",
     "docs": "green",
     "locales": "blue",
+    "notation": "cyan",
     "hygiene": "magenta",
     "leftovers": "yellow",
     "retired": "red",

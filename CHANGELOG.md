@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `isar check notation` (opt-in, heuristic): `spelled-out-notation` reports a
+  constant written out in a term where the project gave it a short form: a mixfix on
+  its declaration, a `notation` command, or `adhoc_overloading`. Bundles, locales, and
+  anonymous `context` blocks scope a short form; `--allow` accepts a constant.
 - `isar check`: a `(* isar-ignore *)` comment silences the findings on its line, or
   on the next line when it stands alone; `(* isar-ignore: CODE, ... *)` silences only
   those codes.
