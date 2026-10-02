@@ -274,6 +274,9 @@ the check groups `retired`, `prose`, and `links`, ported from Voblint's scripts.
 Since 0.4.0 also `isar project notation` (a notation table read off the
 declarations) and `isar project anchors` (anchors of a built HTML presentation),
 replacing Voblint's `notation.py` lookup and its anchor index.
+Since 0.5.0 also the check groups `notation`, `unused`, `redundant`, and
+`methods`, `isar-ignore` comments, and `docs/CHECKS.md`, generated from a
+showcase project with an example for every code.
 
 ## 13. Design principles
 
