@@ -291,3 +291,28 @@ def test_redundant_group(make_project: MakeProject, capsys: pytest.CaptureFixtur
     status, out, _ = run(capsys, "redundant", str(base / "T.thy"))
     assert status == 1
     assert out.endswith("duplicate-lemma: b states a (T.thy:2) again\n")
+
+
+def test_leaf_sessions(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "isar.toml": '[check]\nleaf-sessions = ["Ex"]\n',
+            "ROOT": "session Core = HOL + theories C\nsession Ex = Core + theories E\n",
+            "C.thy": "theory C imports Main begin\n"
+            'lemma core_result: "True" by simp\nlemma core_used: "True" by simp\nend\n',
+            "E.thy": "theory E imports C begin\n"
+            'lemma example: "True" using core_used by simp\nend\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    status, out, _ = run(capsys, "unused", ".")
+    assert status == 1
+    assert out.splitlines() == [
+        "C.thy:2:7: unused-lemma: lemma core_result is cited nowhere in the project"
+    ]
+    (base / "isar.toml").unlink()
+    _, out, _ = run(capsys, "unused", ".", "--leaf-session", "Core")
+    assert "core_result" not in out
+    assert "lemma example" in out

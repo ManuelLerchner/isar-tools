@@ -11,6 +11,9 @@
   (`[where x = "f"]`) or as a bracketed argument (`map (f x)`).
 - `spelled-out-abbreviation` no longer reports the abbreviations of an included
   session (`-d`); they may fix types the project's terms do not have.
+- `isar check unused`: `--leaf-session NAME` (or `check.leaf-sessions`) names a
+  session whose lemmas are results, such as examples; `unused-lemma` does not report
+  them.
 
 ## 0.5.0 (2026-10-02)
 

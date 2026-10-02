@@ -216,7 +216,7 @@ exclude = ["src/**/generated/**"]             # like --exclude
 max-line-length = 100    # also: indent, max-blank-lines, normalize
 
 [tool.isar.check]
-groups = ["project", "proofs", "syntax"]      # also: ignore, allow
+groups = ["project", "proofs", "syntax"]      # also: ignore, allow, leaf-sessions
 retired-file = "retired_identifiers.txt"      # also: retired = ["name", ...]
 
 [tool.isar.stats]

@@ -12,7 +12,9 @@ anything else counts as a citation, so the check misses rather than invents.
 
 A project's main results are often cited only outside it, in a paper or a
 manifest: ``--allow NAME`` (or ``check.allow``) or an ``isar-ignore`` comment
-keeps one.
+keeps one. A session whose lemmas are all results, such as a session of
+examples, is named by ``--leaf-session NAME`` (or ``check.leaf-sessions``):
+its lemmas are not reported, its imports and assumptions are.
 """
 
 import re
@@ -237,10 +239,13 @@ class _Index:
         return self._implicit[path]
 
 
-def check_unused(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
+def check_unused(
+    sources: Iterable[SourceFile], *, allow: Iterable[str] = (), leaves: Iterable[str] = ()
+) -> list[Finding]:
     """``unused-lemma`` and ``unused-import`` findings for ``sources``.
     Citations are looked for in every theory of each source's project."""
     allowed = frozenset(allow)
+    leaf_sessions = frozenset(leaves)
     by_project: dict[int, tuple[Project, list[Path]]] = {}
     for source in sources:
         by_project.setdefault(id(source.project), (source.project, []))[1].append(source.path)
@@ -253,7 +258,9 @@ def check_unused(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) ->
                 cited.setdefault(name, []).append((path, offset))
         for path in paths:
             theory = index.theory(path)
-            findings += _unused_facts(path, theory, cited, allowed)
+            session = project.session_of(path)
+            if session is None or session.name not in leaf_sessions:
+                findings += _unused_facts(path, theory, cited, allowed)
             findings += _unused_assumptions(path, theory, cited, allowed)
             findings += _unused_imports(path, theory, index)
     return findings

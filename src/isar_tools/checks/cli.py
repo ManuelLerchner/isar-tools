@@ -76,6 +76,14 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         help="locales, notation, prose, unused: do not report this identifier (repeatable)",
     )
     check.add_argument(
+        "--leaf-session",
+        action="append",
+        default=[],
+        metavar="SESSION",
+        help="unused: the lemmas of this session are results; do not report them "
+        "(repeatable; adds to check.leaf-sessions)",
+    )
+    check.add_argument(
         "--retired",
         action="append",
         default=[],
@@ -187,7 +195,7 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
     if "notation" in groups:
         findings += check_notation(readable, allow=args.allow)
     if "unused" in groups:
-        findings += check_unused(readable, allow=args.allow)
+        findings += check_unused(readable, allow=args.allow, leaves=args.leaf_session)
     if "redundant" in groups:
         findings += check_redundant(readable)
     if "prose" in groups:
