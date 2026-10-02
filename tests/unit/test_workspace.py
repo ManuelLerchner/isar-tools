@@ -54,6 +54,22 @@ def test_project_root(make_project: MakeProject, tmp_path_factory: pytest.TempPa
     assert project_root(orphan) == orphan.parent
 
 
+def test_project_root_climbs_to_the_roots_listing_it(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOTS": "lib\nmain\n",
+            "lib/ROOT": "session L = HOL + theories L",
+            "lib/L.thy": "theory L imports Main begin end",
+            "main/ROOT": "session M = L + theories M",
+            "main/M.thy": "theory M imports L begin end",
+            "vendor/ROOT": "session V = HOL + theories V",
+            "vendor/V.thy": "theory V imports Main begin end",
+        }
+    )
+    assert project_root(base / "lib/L.thy") == base
+    assert project_root(base / "vendor/V.thy") == base / "vendor"  # not listed
+
+
 @pytest.mark.parametrize(
     ("name", "message"),
     [("notes.txt", "not a directory or .thy file"), ("missing", "no such file or directory")],

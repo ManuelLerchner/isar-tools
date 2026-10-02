@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.config import Exclude
-from isar_tools.project.model import SKIP_DIRS, Project
+from isar_tools.project.model import SKIP_DIRS, Project, discover_roots
 from isar_tools.render import display_path
 from isar_tools.source.files import read_source
 from isar_tools.source.keywords import CommandKind
@@ -85,11 +85,20 @@ def _thy_files(directory: Path, excluded: Sequence[Path] = ()) -> list[Path]:
 
 
 def project_root(path: Path) -> Path:
-    """The nearest ancestor of ``path`` with a ``ROOT`` or ``ROOTS`` file."""
+    """The nearest ancestor of ``path`` with a ``ROOT`` or ``ROOTS`` file, widened
+    to each further ancestor whose ``ROOTS`` reaches it: a session directory
+    listed in a project's ``ROOTS`` belongs to that project, and checks such as
+    ``unused`` look for citations in all of it."""
+    root: Path | None = None
     for directory in path.resolve().parents:
-        if (directory / "ROOT").is_file() or (directory / "ROOTS").is_file():
-            return directory
-    return path.resolve().parent
+        if root is None:
+            if (directory / "ROOT").is_file() or (directory / "ROOTS").is_file():
+                root = directory
+        elif (directory / "ROOTS").is_file() and any(
+            r.parent.is_relative_to(root) for r in discover_roots(directory)
+        ):
+            root = directory
+    return root or path.resolve().parent
 
 
 @dataclass(frozen=True)
