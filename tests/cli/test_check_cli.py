@@ -277,7 +277,7 @@ def test_unused_group(make_project: MakeProject, capsys: pytest.CaptureFixture[s
     base = make_project({"T.thy": 'theory T imports Main begin\nlemma l: "True" by simp\nend\n'})
     status, out, _ = run(capsys, "unused", str(base / "T.thy"))
     assert status == 1
-    assert out.endswith("unused-lemma: lemma l is cited nowhere in the project [*]\n")
+    assert out.endswith("unused-lemma: lemma l is cited nowhere in the project\n")
 
 
 def test_redundant_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
@@ -310,7 +310,7 @@ def test_leaf_sessions(
     status, out, _ = run(capsys, "unused", ".")
     assert status == 1
     assert out.splitlines() == [
-        "C.thy:2:7: unused-lemma: lemma core_result is cited nowhere in the project [*]"
+        "C.thy:2:7: unused-lemma: lemma core_result is cited nowhere in the project"
     ]
     (base / "isar.toml").unlink()
     _, out, _ = run(capsys, "unused", ".", "--leaf-session", "Core")

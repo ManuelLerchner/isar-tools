@@ -1,8 +1,17 @@
 theory U imports Main begin
 
-text \<open>Facts nothing cites: a chain, a block about one fact, and two facts in one command.\<close>
+text \<open>Facts nothing cites are reported, never deleted: whether one is dead is a decision.\<close>
 
 section \<open>A chain\<close>
+
+text \<open>Only the top of the chain is cited by nothing; deleting it orphans the rest.\<close>
+
+lemma base_fact: "True" by simp
+
+lemma middle_fact: "True" using base_fact by simp
+
+text \<open>The top fact, explained on its own.\<close>
+lemma top_fact: "True" using middle_fact by simp
 
 section \<open>Kept\<close>
 

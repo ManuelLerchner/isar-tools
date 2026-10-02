@@ -60,7 +60,11 @@ def test_fixable_note(
     make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     base = make_project(
-        {"T.thy": 'theory T imports Main begin\nlemma t: "True" by (simp add:)\nend\n'}
+        {
+            "ROOT": "session S = HOL + theories A T\n",
+            "A.thy": 'theory A imports Main begin\ndefinition a :: nat where "a = 0"\nend\n',
+            "T.thy": 'theory T imports Main A begin\nlemma t [simp]: "True" by (simp add:)\nend\n',
+        }
     )
     monkeypatch.chdir(base)
     assert main(["check", "methods", "unused", "T.thy"]) == 1
@@ -90,16 +94,21 @@ def test_all_takes_retired_when_it_has_names(
 def test_rounds_are_bounded(
     make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    base = make_project(
-        {
-            "ROOT": "session S = HOL + theories T\n",
-            "T.thy": "theory T imports Main begin\ntext \\<open>t\\<close>\n"
-            'lemma a: "True" by simp\nlemma b: "True" using a by simp\nend\n',
-        }
+    files = {"ROOT": "session S = HOL + theories A B C T\n"}
+    for name in "ABC":
+        files[f"{name}.thy"] = (
+            f"theory {name} imports Main begin\ntext \\<open>t\\<close>\n"
+            f'definition {name.lower()}_c :: nat where "{name.lower()}_c = 0"\nend\n'
+        )
+    files["T.thy"] = (
+        "theory T imports A B C begin\ntext \\<open>t\\<close>\n"
+        'definition t_c :: nat where "t_c = a_c"\nend\n'
     )
+    base = make_project(files)
     monkeypatch.chdir(base)
     monkeypatch.setattr(check_cli, "_MAX_ROUNDS", 1)
-    assert main(["check", "unused", "--fix=all", "."]) == 1  # b went; a is left for a next run
+    # Unused imports go one per round, so one is left for a next run.
+    assert main(["check", "unused", "--fix=all", "T.thy"]) == 1
     out, err = capsys.readouterr()
-    assert "lemma a is cited nowhere" in out
+    assert out.count("unused-import") == 1
     assert err.startswith("fixed 1 finding\n")

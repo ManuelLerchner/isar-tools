@@ -1,9 +1,8 @@
 exit 1
 U.thy:11:7: duplicate-lemma: middle_fact states base_fact (U.thy:9) again
 U.thy:14:7: duplicate-lemma: top_fact states base_fact (U.thy:9) again
-U.thy:14:7: unused-lemma: lemma top_fact is cited nowhere in the project [*]
+U.thy:14:7: unused-lemma: lemma top_fact is cited nowhere in the project
 U.thy:20:7: unused-lemma: lemma pair_one is cited nowhere in the project
 --- stderr
 fixed 0 findings
 4 findings: 2 duplicate-lemma, 2 unused-lemma
-1 with --fix=all

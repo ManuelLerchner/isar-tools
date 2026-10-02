@@ -1,6 +1,6 @@
 theory U imports Main begin
 
-text \<open>Facts nothing cites: a chain, a block about one fact, and two facts in one command.\<close>
+text \<open>Facts nothing cites are reported, never deleted: whether one is dead is a decision.\<close>
 
 section \<open>A chain\<close>
 

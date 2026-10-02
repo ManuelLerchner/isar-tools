@@ -89,9 +89,9 @@ isar check all --fix=all             # also the ones only a build can confirm
 
 A finding marked `[*]` carries a fix. `--fix` (safe) rewrites `(simp add:)`,
 duplicate facts, redundant imports, tabs, CR line endings, bidi controls, and
-non-ASCII symbols outside ML. `--fix=all` also drops unused imports, rewrites
-terms into their notation or abbreviation, and deletes unused lemmas; it runs
-until no fix is left, so a lemma only a deleted one cited goes too. Build after it.
+non-ASCII symbols outside ML. `--fix=all` also drops unused imports and rewrites
+terms into their notation or abbreviation; build after it. Unused and redundant
+lemmas are only reported: whether one is dead is a decision, not a rewrite.
 
 A tour, from [`docs/showcase/Tour.thy`](https://github.com/ManuelLerchner/isar-tools/blob/main/docs/showcase/Tour.thy):
 

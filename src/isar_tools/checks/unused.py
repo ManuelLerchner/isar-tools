@@ -284,46 +284,6 @@ def _cited_elsewhere(
     )
 
 
-def _line_end(text: str, offset: int) -> int:
-    """The offset after the newline that ends ``offset``'s line."""
-    newline = text.find("\n", offset)
-    return len(text) if newline < 0 else newline + 1
-
-
-def _names_more_facts(theory: Theory, command: Command) -> bool:
-    """Whether ``command`` names a further fact: ``lemma a: P and b: Q``."""
-    toks = list(significant(command.tokens(theory.tokens)))
-    return any(
-        t.text == "and"
-        and i + 2 < len(toks)
-        and toks[i + 1].kind is Kind.WORD
-        and toks[i + 2].text in (":", "[")
-        for i, t in enumerate(toks)
-    )
-
-
-def _delete_fact(theory: Theory, fact: Entity) -> Fix | None:
-    """Delete the command declaring ``fact`` with its proof, and the text
-    block right before it when nothing but document text follows: that block
-    is about this fact alone. A command declaring several facts stays."""
-    text, commands = theory.text, theory.commands
-    if _names_more_facts(theory, commands[fact.command_index]):
-        return None
-    start, end = fact.start, _line_end(text, fact.end)
-    later = [c for c in commands if theory.tokens[c.first].start >= fact.end]
-    before = commands[fact.command_index - 1] if fact.command_index > 0 else None
-    if (
-        before is not None
-        and before.kind is CommandKind.DOCUMENT_BODY
-        and (not later or later[0].kind in DOCUMENT or later[0].name == "end")
-    ):
-        start = text.rfind("\n", 0, theory.tokens[before.first].start) + 1
-    # One blank line stays where the fact sat between two.
-    if start >= 2 and text[start - 2 : start] == "\n\n" and text[end : end + 1] == "\n":
-        end += 1
-    return Fix((Edit(start, end),), safe=False)
-
-
 def _unused_facts(
     path: Path, theory: Theory, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
 ) -> Iterator[Finding]:
@@ -343,7 +303,6 @@ def _unused_facts(
             toks[index].start,
             "unused-lemma",
             f"{fact.command} {fact.name} is cited nowhere in the project",
-            _delete_fact(theory, fact),
         )
 
 
