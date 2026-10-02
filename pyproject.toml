@@ -66,6 +66,13 @@ include = ["src", "tests", "scripts"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 
+# ty runs beside pyright until it has a strict mode of its own.
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["src", "tests", "scripts"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

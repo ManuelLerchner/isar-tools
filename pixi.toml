@@ -34,6 +34,7 @@ check-wheel = { cmd = "twine check dist/*", description = "Validate built Python
 lefthook = "*"
 ruff = "*"
 pyright = "*"
+ty = "*"
 prettier = "*"
 taplo = "*"
 pre-commit-hooks = "*"
@@ -43,7 +44,7 @@ zizmor = "*"
 [feature.lint.tasks]
 pre-commit-install = { cmd = "lefthook install", description = "Install the git hooks." }
 lint = { cmd = "lefthook run pre-commit --all-files --force", description = "Run every linter and formatter check over the repository." }
-typecheck = { cmd = "pyright", description = "Type-check sources and tests in strict mode." }
+typecheck = { cmd = "pyright && ty check", description = "Type-check sources and tests: pyright in strict mode, then ty." }
 
 [feature.py311.dependencies]
 python = "3.11.*"

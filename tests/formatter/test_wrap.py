@@ -2,9 +2,9 @@ from isar_tools.formatter.formatter import Options
 from isar_tools.formatter.wrap import format_source
 
 
-def wrap(text: str, limit: int, **kwargs: int | bool) -> str:
-    out = format_source(text, None, Options(max_line_length=limit, **kwargs))  # type: ignore[arg-type]
-    assert format_source(out, None, Options(max_line_length=limit, **kwargs)) == out  # type: ignore[arg-type]
+def wrap(text: str, limit: int) -> str:
+    out = format_source(text, None, Options(max_line_length=limit))
+    assert format_source(out, None, Options(max_line_length=limit)) == out
     return out
 
 
