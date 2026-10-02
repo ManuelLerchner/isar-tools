@@ -18,7 +18,6 @@ keeps one.
 import re
 from bisect import bisect_left
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 from isar_tools.checks.findings import Finding
@@ -27,9 +26,9 @@ from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
 from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_source
-from isar_tools.source.keywords import DOCUMENT
+from isar_tools.source.keywords import DOCUMENT, CommandKind
 from isar_tools.source.lexer import IDENTIFIER_RE, Kind, Token
-from isar_tools.source.theory import Theory, parse_theory, significant, unquote
+from isar_tools.source.theory import Command, Theory, parse_theory, significant, unquote
 
 _NAME = re.compile(rf"{IDENTIFIER_RE.pattern}(?:\.{IDENTIFIER_RE.pattern})*")
 _TEXT_KINDS = frozenset({Kind.WORD, Kind.STRING, Kind.CARTOUCHE, Kind.VERBATIM, Kind.ALT_STRING})
@@ -114,6 +113,8 @@ def uses(theory: Theory) -> Iterator[tuple[str, int]]:
     """Names that formal text and antiquotations use, each also by its parts
     (``q.foo`` uses ``q`` and ``foo``), with their offsets."""
     for command in theory.commands:
+        if command.kind is CommandKind.THY_BEGIN:
+            continue  # the header names theories, not what they declare
         document = command.kind in DOCUMENT
         for tok in significant(command.tokens(theory.tokens)):
             if tok.kind not in _TEXT_KINDS:
@@ -141,15 +142,7 @@ def _registers(toks: list[Token], index: int) -> bool:
     if [t.text for t in rest[:1]] != ["["]:
         return False
     group, _ = bracket_group(rest, 0)
-    names = [group[i + 1].text for i, t in enumerate(group[:-1]) if t.text in ("[", ",")]
-    return any(name not in _INERT_ATTRIBUTES for name in names)
-
-
-@dataclass
-class _Read:
-    path: Path
-    theory: Theory
-    facts: list[Entity]
+    return any(name not in _INERT_ATTRIBUTES for name in _attribute_names(group))
 
 
 def _facts(theory: Theory, name: str, path: Path) -> list[Entity]:
@@ -160,55 +153,206 @@ def _facts(theory: Theory, name: str, path: Path) -> list[Entity]:
     ]
 
 
+def _theory_name(theory: Theory, path: Path) -> str:
+    return theory.header.name.text if theory.header else path.stem
+
+
+class _Index:
+    """The theories of a project, read once, and what each uses and adds."""
+
+    def __init__(self, project: Project) -> None:
+        self.project = project
+        self._theories: dict[Path, Theory] = {}
+        self._reach: dict[Path, frozenset[Path]] = {}
+        self._provided: dict[Path, frozenset[str]] = {}
+        self._implicit: dict[Path, bool] = {}
+
+    def theory(self, path: Path) -> Theory:
+        if path not in self._theories:
+            text = read_source(path)
+            self._theories[path] = parse_theory(text, self.project.keywords_for(path))
+        return self._theories[path]
+
+    def own(self, paths: Iterable[Path]) -> list[Path]:
+        """``paths``, the project's theories, and what they import, without
+        included (``-d``) theories."""
+        start = [*paths, *self.project.theory_files()]
+        return [
+            p
+            for p in dict.fromkeys(self.project.closure(start, None))
+            if (session := self.project.session_of(p)) is None or not session.external
+        ]
+
+    def reach(self, path: Path) -> frozenset[Path]:
+        """``path`` and every project theory it imports, transitively."""
+        if path not in self._reach:
+            session = self.project.session_of(path)
+            self._reach[path] = frozenset(self.project.closure([path], session))
+        return self._reach[path]
+
+    def provided(self, path: Path) -> frozenset[str]:
+        """Every spelling of every name the theory declares, derived facts
+        included, and the theory's own name."""
+        if path not in self._provided:
+            theory = self.theory(path)
+            name = _theory_name(theory, path)
+            names = {name}
+            for e in entities(theory, name, path, derived=True):
+                names |= {e.name, e.qualified, f"{name}.{e.name}"}
+                if e.scope:
+                    names.add(f"{e.scope}.{e.name}")
+            self._provided[path] = frozenset(names)
+        return self._provided[path]
+
+    def implicit(self, path: Path) -> bool:
+        """Whether the theory can be needed without any of its names: it
+        declares commands, instances, simp rules, notation, or ML."""
+        if path not in self._implicit:
+            theory = self.theory(path)
+            keywords = theory.header is not None and bool(theory.header.keywords)
+            commands = any(_implicit(theory, command) for command in theory.commands)
+            # A constant with a mixfix is used through its notation, not its name.
+            mixfix = any(e.mixfix for e in entities(theory, _theory_name(theory, path), path))
+            self._implicit[path] = keywords or commands or mixfix
+        return self._implicit[path]
+
+
 def check_unused(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
-    """``unused-lemma`` findings for the facts ``sources`` declare. Citations
-    are looked for in every theory of each source's project."""
+    """``unused-lemma`` and ``unused-import`` findings for ``sources``.
+    Citations are looked for in every theory of each source's project."""
     allowed = frozenset(allow)
     by_project: dict[int, tuple[Project, list[Path]]] = {}
     for source in sources:
         by_project.setdefault(id(source.project), (source.project, []))[1].append(source.path)
     findings: list[Finding] = []
     for project, paths in by_project.values():
-        universe = [
-            p
-            for p in dict.fromkeys(project.closure([*paths, *project.theory_files()], None))
-            if (session := project.session_of(p)) is None or not session.external
-        ]
+        index = _Index(project)
         cited: dict[str, list[tuple[Path, int]]] = {}
-        read: list[_Read] = []
-        checked = set(paths)
-        for path in universe:
-            theory = parse_theory(read_source(path), project.keywords_for(path))
-            for name, offset in uses(theory):
+        for path in index.own(paths):
+            for name, offset in uses(index.theory(path)):
                 cited.setdefault(name, []).append((path, offset))
-            if path in checked:
-                name = theory.header.name.text if theory.header else path.stem
-                read.append(_Read(path, theory, _facts(theory, name, path)))
-        for r in read:
-            findings += _unused_facts(r, cited, allowed)
+        for path in paths:
+            theory = index.theory(path)
+            findings += _unused_facts(path, theory, cited, allowed)
+            findings += _unused_imports(path, theory, index)
     return findings
 
 
 def _unused_facts(
-    r: _Read, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
+    path: Path, theory: Theory, cited: dict[str, list[tuple[Path, int]]], allowed: frozenset[str]
 ) -> Iterator[Finding]:
-    toks = list(significant(r.theory.tokens))
+    toks = list(significant(theory.tokens))
     starts = [t.start for t in toks]
-    for fact in r.facts:
+    for fact in _facts(theory, _theory_name(theory, path), path):
         if fact.name in allowed or fact.qualified in allowed:
             continue
         index = _name_token(toks, starts, fact)
         if index < 0 or _registers(toks, index):
             continue
         if any(
-            path != r.path or not fact.start <= offset < fact.end
-            for path, offset in cited.get(fact.name, ())
+            where != path or not fact.start <= offset < fact.end
+            for where, offset in cited.get(fact.name, ())
         ):
             continue
         yield Finding.at(
-            r.path,
-            r.theory.lines,
+            path,
+            theory.lines,
             toks[index].start,
             "unused-lemma",
             f"{fact.command} {fact.name} is cited nowhere in the project",
         )
+
+
+# Commands whose effect a theory importing them can rely on without naming
+# anything they declare.
+_IMPLICIT_COMMANDS = frozenset(
+    {
+        "instantiation",
+        "instance",
+        "interpretation",
+        "global_interpretation",
+        "sublocale",
+        "declare",
+        "setup",
+        "local_setup",
+        "method_setup",
+        "attribute_setup",
+        "simproc_setup",
+        "declaration",
+        "syntax_declaration",
+        "notation",
+        "no_notation",
+        "type_notation",
+        "no_type_notation",
+        "syntax",
+        "no_syntax",
+        "translations",
+        "no_translations",
+        "parse_translation",
+        "print_translation",
+        "adhoc_overloading",
+        "no_adhoc_overloading",
+        "open_bundle",
+        "unbundle",
+        "code_printing",
+        "code_datatype",
+        "hide_const",
+        "hide_fact",
+        "hide_type",
+        "hide_class",
+        "default_sort",
+        "setup_lifting",
+        "lifting_update",
+        "lifting_forget",
+    }
+)
+_FACT_COMMANDS = frozenset({"lemma", "theorem", "corollary", "proposition", "lemmas", "theorems"})
+
+
+def _attribute_names(group: list[Token]) -> list[str]:
+    """The attribute names of ``[a x, b]``: ``a`` and ``b``."""
+    return [group[i + 1].text for i, t in enumerate(group[:-1]) if t.text in ("[", ",")]
+
+
+def _implicit(theory: Theory, command: Command) -> bool:
+    """Whether ``command`` has an effect beyond the names it declares: an
+    instance, ML, notation, or a fact with a registering attribute."""
+    if command.name in _IMPLICIT_COMMANDS or "ML" in command.name:
+        return True
+    if command.name not in _FACT_COMMANDS:
+        return False
+    toks = list(significant(command.tokens(theory.tokens)))
+    # `lemma [simp]: ...` or `lemma foo [intro]: ...`
+    at = 1 if len(toks) > 1 and toks[1].text == "[" else 2
+    if len(toks) <= at or toks[at].text != "[":
+        return False
+    group, _ = bracket_group(toks, at)
+    return any(name not in _INERT_ATTRIBUTES for name in _attribute_names(group))
+
+
+def _unused_imports(path: Path, theory: Theory, index: _Index) -> Iterator[Finding]:
+    """``redundant-import``: an import another import reaches already;
+    ``unused-import``: an import of which nothing it adds is used."""
+    header = theory.header
+    if header is None:
+        return
+    session = index.project.session_of(path)
+    imports = [
+        (imp, target)
+        for imp in header.imports
+        if (target := index.project.resolve_import(path, session, imp.text)) is not None
+    ]
+    used = {name for name, _ in uses(theory)}
+    for imp, target in imports:
+        others = [(i, t) for i, t in imports if t != target]
+        via = next((i for i, t in others if target in index.reach(t)), None)
+        if via is not None:
+            message = f"{imp.text} is imported through {via.text} already"
+            yield Finding.at(path, theory.lines, imp.start, "redundant-import", message)
+            continue
+        exclusive = index.reach(target).difference(*(index.reach(t) for _, t in others))
+        if any(index.implicit(p) for p in exclusive):
+            continue
+        if not any(index.provided(p) & used for p in exclusive):
+            message = f"imports {imp.text}, but uses nothing it adds"
+            yield Finding.at(path, theory.lines, imp.start, "unused-import", message)

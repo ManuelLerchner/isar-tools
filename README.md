@@ -103,7 +103,7 @@ isar check links site/index.html --browser-info browser_info   # links into HTML
 isar check locales -d ~/afp/thys  # free variables in locale headers
 isar check notation src/          # constants written out despite their notation
 isar check methods src/           # (simp add:), facts listed twice
-isar check unused src/            # lemmas nothing cites
+isar check unused src/            # lemmas nothing cites, imports nothing needs
 isar check --ignore oops --format json
 ```
 
@@ -116,7 +116,7 @@ isar check --ignore oops --format json
 | `docs`      | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class` (opt-in)                                                            |
 | `locales`   | `locale-free-variable` (opt-in, heuristic)                                                                                                                     |
 | `notation`  | `spelled-out-notation` (opt-in, heuristic)                                                                                                                     |
-| `unused`    | `unused-lemma` (opt-in, heuristic)                                                                                                                             |
+| `unused`    | `unused-lemma`, `redundant-import`, `unused-import` (opt-in, heuristic)                                                                                        |
 | `hygiene`   | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name` (opt-in)                                                                                        |
 | `leftovers` | `proof-search`, `counterexample-search`, `diagnostic-command` (opt-in)                                                                                         |
 | `methods`   | `empty-modifier`, `duplicate-fact` (opt-in)                                                                                                                    |
@@ -158,7 +158,11 @@ qualified (`T.foo`, `q.foo` of an interpretation), with arguments
 fact with an attribute that registers it (`[simp]`, `[intro]`, a
 `named_theorems` collection) is used without its name and is never reported.
 Main results cited only outside the project take `--allow NAME` or an
-`isar-ignore` comment.
+`isar-ignore` comment. A `redundant-import` is reached through another import
+of the same theory already. An `unused-import` adds theories of which the
+importing theory names nothing; a theory with instances, notation, ML, setup,
+or a fact with a registering attribute may be needed without a name and keeps
+its import.
 
 `retired` reports identifiers the project removed on purpose, listed in
 `check.retired`, in the file `check.retired-file` names (one per line, `#`

@@ -60,3 +60,35 @@ def test_antiquotations() -> None:
     ]
     assert list(antiquotations("@{thm x")) == [(0, 7)]
     assert list(antiquotations(r"\<^const>\<open>c")) == [(0, 17)]
+
+
+def test_imports(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories A B C D E F T U\n",
+            "A.thy": 'theory A imports Main begin definition a_const where "a_const = 0" end',
+            "B.thy": 'theory B imports A begin definition b_const where "b_const = 0" end',
+            "C.thy": (
+                'theory C imports Main begin definition c_const where "c_const = 0" '
+                'lemma c_plain: "True" by simp locale c_loc begin lemma c_in: "True" by simp end '
+                "end"
+            ),
+            "D.thy": 'theory D imports Main begin lemma d_rule [simp]: "True" by simp end',
+            "E.thy": "theory E imports Main begin end",
+            "F.thy": "theory F imports Main begin ML \\<open>\\<close> end",
+            "U.thy": "theory U imports C F begin end",
+            "NoHeader.thy": 'lemma "True" by simp',
+            "T.thy": (
+                "theory T\n  imports A B C D E F\nbegin\n"
+                'lemma "b_const = a_const" using d_unrelated by simp\nend\n'
+            ),
+        }
+    )
+    paths = [base / "T.thy", base / "U.thy", base / "NoHeader.thy"]
+    findings = [f for f in check_unused(collect(paths)) if f.code != "unused-lemma"]
+    assert [(f.path.name, f.line, f.column, f.code, f.message) for f in findings] == [
+        ("T.thy", 2, 11, "redundant-import", "A is imported through B already"),
+        ("T.thy", 2, 15, "unused-import", "imports C, but uses nothing it adds"),
+        ("T.thy", 2, 19, "unused-import", "imports E, but uses nothing it adds"),
+        ("U.thy", 1, 18, "unused-import", "imports C, but uses nothing it adds"),
+    ]

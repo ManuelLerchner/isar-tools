@@ -4,7 +4,9 @@
 
 - `isar check unused` (opt-in, heuristic): `unused-lemma` reports a named fact
   nothing in the project cites. Facts with an attribute such as `[simp]` count as
-  used; `--allow` keeps a main result cited only elsewhere.
+  used; `--allow` keeps a main result cited only elsewhere. `redundant-import` reports
+  an import another import reaches already; `unused-import` (heuristic) one of which
+  the theory names nothing and that has no instances, notation, ML, or simp rules.
 - `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
   nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
   one modifier.
