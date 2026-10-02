@@ -1,37 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-02)
 
-- `docs/CHECKS.md` documents every check with an example, generated from the showcase
-  project in `docs/showcase` (`pixi run checks-doc`); a test fails when a code has no
-  example or the document is stale. The README is shorter and says why the tool
-  exists; the `isar project` details moved to `docs/PROJECT.md`.
-- Checks that read the whole project (`links`, `locales`, `prose`, and the new
-  groups) no longer stop at a theory that is not UTF-8.
-- `isar check leftovers` reports `defer` and `prefer` (`goal-reordering`) and `back`
-  (`backtracking`); `isar check methods` reports `single-apply`, a goal proved by one
-  `apply` and `done`, which `by` states in one step.
-- `isar check redundant` (opt-in, heuristic): `duplicate-lemma` reports a lemma that
-  states an earlier one again up to variable names; `subsumed-lemma` one that is an
-  instance of another, which it can cite instead.
-- `isar check unused` (opt-in, heuristic): `unused-lemma` reports a named fact
-  nothing in the project cites. Facts with an attribute such as `[simp]` count as
-  used; `--allow` keeps a main result cited only elsewhere. `redundant-import` reports
-  an import another import reaches already; `unused-import` (heuristic) one of which
-  the theory names nothing and that has no instances, notation, ML, or simp rules.
-  `unused-assumption` reports a named locale or class assumption no proof cites.
-- `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
-  nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
-  one modifier.
+- `isar check`: a `(* isar-ignore *)` comment silences the findings on its line, or
+  on the next line when it stands alone; `(* isar-ignore: CODE, ... *)` silences only
+  those codes.
 - `isar check notation` (opt-in, heuristic): `spelled-out-notation` reports a
   constant written out in a term where the project gave it a short form: a mixfix on
   its declaration, a `notation` command, or `adhoc_overloading`. Bundles, locales, and
   anonymous `context` blocks scope a short form; `--allow` accepts a constant.
   `spelled-out-abbreviation` reports a term that is the right-hand side of an
   `abbreviation`.
-- `isar check`: a `(* isar-ignore *)` comment silences the findings on its line, or
-  on the next line when it stands alone; `(* isar-ignore: CODE, ... *)` silences only
-  those codes.
+- `isar check methods` (opt-in): `empty-modifier` reports a method modifier with
+  nothing after it, as in `by (simp add:)`; `duplicate-fact` a fact listed twice after
+  one modifier.
+- `isar check unused` (opt-in, heuristic): `unused-lemma` reports a named fact
+  nothing in the project cites. Facts with an attribute such as `[simp]` count as
+  used; `--allow` keeps a main result cited only elsewhere. `redundant-import` reports
+  an import another import reaches already; `unused-import` (heuristic) one of which
+  the theory names nothing and that has no instances, notation, ML, or simp rules.
+  `unused-assumption` reports a named locale or class assumption no proof cites.
+- `isar check redundant` (opt-in, heuristic): `duplicate-lemma` reports a lemma that
+  states an earlier one again up to variable names; `subsumed-lemma` one that is an
+  instance of another, which it can cite instead.
+- `isar check leftovers` reports `defer` and `prefer` (`goal-reordering`) and `back`
+  (`backtracking`); `isar check methods` reports `single-apply`, a goal proved by one
+  `apply` and `done`, which `by` states in one step.
+- `docs/CHECKS.md` documents every check with an example, generated from the showcase
+  project in `docs/showcase` (`pixi run checks-doc`); a test fails when a code has no
+  example or the document is stale. The README is shorter and says why the tool
+  exists; the `isar project` details moved to `docs/PROJECT.md`.
+- Checks that read the whole project (`links`, `locales`, `prose`, and the new
+  groups) no longer stop at a theory that is not UTF-8.
 
 ## 0.4.0 (2026-10-01)
 
