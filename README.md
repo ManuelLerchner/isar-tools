@@ -262,7 +262,7 @@ Requires [pixi](https://pixi.sh).
 pixi run pre-commit-install  # git hooks
 pixi run test
 pixi run coverage            # 100% line and branch coverage required
-pixi run typecheck           # pyright, strict
+pixi run typecheck           # pyright (strict), then ty
 pixi run lint
 pixi run isar --help
 pixi run demo                # re-record docs/demo/demo.gif with VHS

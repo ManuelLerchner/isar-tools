@@ -263,7 +263,7 @@ def commands_table(entries: Sequence[Entry], by: str = "session") -> Table:
     for e in entries:
         for name, n in e.stats.commands.items():
             counts[(e.session, name)] += n
-    rows = [
+    rows: list[dict[str, Cell]] = [
         {"session": session, "command": name, "count": n}
         for (session, name), n in sorted(
             counts.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1])
