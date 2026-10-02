@@ -173,9 +173,7 @@ def _bundle_changes(args: list[Token]) -> tuple[set[str], set[str]]:
     opened: set[str] = set()
     closed: set[str] = set()
     target = opened
-    for tok in args:
-        if tok.kind is not Kind.WORD:
-            break
+    for tok in (t for t in args if t.kind is Kind.WORD):
         if tok.text == "no":
             target = closed
         else:
@@ -255,11 +253,10 @@ def _shown(mixfix: str, notation: str) -> tuple[str, int] | None:
         written = template(mixfix, notation)
     except NotationError:
         return None
-    if not written:
-        return None
-    infix = mixfix.split(maxsplit=1)[0] in INFIX
+    infix = mixfix.partition(" ")[0] in INFIX
     # `'_` quotes the underscore: it is no slot.
-    return written, 0 if infix else len(re.findall(r"(?<!')_", written))
+    arity = 0 if infix else len(re.findall(r"(?<!')_", written))
+    return (written, arity) if written else None
 
 
 def _in_bundle(scope: Scope) -> str:
@@ -285,15 +282,11 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
 def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> Iterator[ShortForm]:
     """``adhoc_overloading g == f "t u" and h == k``; the ``==`` is optional."""
     for part in _split_and(args):
-        if not part or part[0].kind not in (Kind.WORD, Kind.STRING):
-            continue
         generic = unquote(part[0]).rpartition(".")[2]
-        for tok in part[1:]:
-            if tok.kind in (Kind.WORD, Kind.STRING, Kind.CARTOUCHE):
-                pattern = _pattern(unquote(tok))
-                if pattern:
-                    advice = f"it is overloaded as {generic}{_in_bundle(scope)}"
-                    yield ShortForm(pattern, advice, 1, scope, path, index)
+        advice = f"it is overloaded as {generic}{_in_bundle(scope)}"
+        instances = [t for t in part[1:] if t.kind in (Kind.WORD, Kind.STRING, Kind.CARTOUCHE)]
+        for pattern in filter(None, (_pattern(unquote(t)) for t in instances)):
+            yield ShortForm(pattern, advice, 1, scope, path, index)
 
 
 def _declared_forms(theory: Theory, path: Path) -> Iterator[ShortForm]:
@@ -538,9 +531,9 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
                 if " ".join(form.pattern) not in checker.allow:
                     by_first.setdefault(form.pattern[0], []).append(form)
         for path in paths:
-            found = checker.analyses.get(path)
-            if found is not None:
-                findings += _check(path, found, by_first, includes, checker)
+            found = checker.analyses[path]
+            assert found is not None  # set once the import cycle guard is left
+            findings += _check(path, found, by_first, includes, checker)
     return findings
 
 

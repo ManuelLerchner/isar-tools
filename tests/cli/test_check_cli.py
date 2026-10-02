@@ -247,3 +247,18 @@ def test_ignore_comments(make_project: MakeProject, capsys: pytest.CaptureFixtur
     assert status == 1
     lines = [line.split(": ")[0].rsplit(":", 2)[-2] for line in out.splitlines()]
     assert lines == ["5", "6"]
+
+
+def test_notation_group(make_project: MakeProject, capsys: pytest.CaptureFixture[str]) -> None:
+    base = make_project(
+        {
+            "T.thy": (
+                "theory T imports Main begin\n"
+                'consts f :: "nat \\<Rightarrow> nat" ("\\<phi>")\n'
+                'lemma "f 0 = 0" sorry\nend\n'
+            )
+        }
+    )
+    status, out, _ = run(capsys, "notation", str(base / "T.thy"))
+    assert status == 1
+    assert out.endswith("spelled-out-notation: f is written out; its notation is \\<phi>\n")

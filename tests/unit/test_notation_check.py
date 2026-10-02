@@ -131,3 +131,46 @@ notation (output) gamma_int ("\<G>")"""
 
 def test_allow(make_project: MakeProject) -> None:
     assert found(make_project, 'lemma "widen a b = gamma_int i"', "widen") == [(2, "gamma_int")]
+
+
+def test_declaration_forms(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories Lib Other T\n",
+            "Lib.thy": r"""theory Lib imports Main begin
+definition All2 :: "('a \<Rightarrow> bool) \<Rightarrow> bool" (binder "\<forall>\<forall>" 10)
+  where "All2 P = All P"
+consts hidden :: "'a \<Rightarrow> 'a"
+private lemma priv: "True" by simp
+consts ip :: "nat \<Rightarrow> nat" consts op2 :: "nat \<Rightarrow> nat"
+notation (input) ip ("\<iota>") and op2 and hidden (binder "\<hh>" 10)
+consts g :: "nat \<Rightarrow> nat" consts h :: "nat \<Rightarrow> nat"
+adhoc_overloading g == h ""
+bundle b1 begin notation op2 ("\<oo>") end
+bundle b2 = b1
+open_bundle b3 begin notation hidden ("\<hidden>") end
+experiment begin notation h ("\<eta>") end
+end
+""",
+            "Other.thy": r"""theory Other imports Main begin
+consts far :: "nat" ("\<phi>\<phi>")
+end
+""",
+            "T.thy": r"""theory T imports Lib begin
+lemma "All2 P" "priv n = n" "ip n = 0" "h n = 0" "hidden n = 0" "far = 0" "h (Suc 0) = 0"
+lemma "op2 n = 0" including b2 b1 sorry
+lemma "\<And>x. x \<and> (h (f x) y z" "h (f x" for x and y sorry
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    assert [(f.line, f.message) for f in findings] == [
+        (2, r"ip is written out; its notation is \<iota>"),
+        (2, "h is written out; it is overloaded as g"),
+        (2, r"hidden is written out; its notation is \<hidden> (bundle b3)"),
+        (2, "h is written out; it is overloaded as g"),
+        (3, r"op2 is written out; its notation is \<oo> (bundle b1)"),
+        (4, "h is written out; it is overloaded as g"),
+        (4, "h is written out; it is overloaded as g"),
+    ]
