@@ -291,9 +291,6 @@ def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> It
 
 def _declared_forms(theory: Theory, path: Path) -> Iterator[ShortForm]:
     """Short forms from the mixfix of a declaration."""
-    by_line: dict[int, int] = {}
-    for i, command in enumerate(theory.commands):
-        by_line.setdefault(theory.lines.line(theory.start(command)), i)
     name = theory.header.name.text if theory.header else path.stem
     for e in entities(theory, name, path):
         if e.kind != "constant" or not e.mixfix or e.mode == "output":
@@ -309,7 +306,7 @@ def _declared_forms(theory: Theory, path: Path) -> Iterator[ShortForm]:
         else:
             scope = Scope("global")
         advice = f"its notation is {shown[0]}"
-        index = by_line[e.line]
+        index = e.command_index
         yield ShortForm((encode(e.name),), advice, shown[1], scope, path, index, parameter)
 
 

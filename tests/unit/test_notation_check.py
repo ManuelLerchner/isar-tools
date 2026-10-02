@@ -174,3 +174,15 @@ end
         (4, "h is written out; it is overloaded as g"),
         (4, "h is written out; it is overloaded as g"),
     ]
+
+
+def test_one_line_theory(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories L T\n",
+            "L.thy": r'theory L imports Main begin consts one :: nat ("\<one>") end',
+            "T.thy": 'theory T imports L begin lemma "one = 0" sorry end',
+        }
+    )
+    [finding] = check_notation(collect([base / "T.thy"]))
+    assert finding.message == r"one is written out; its notation is \<one>"

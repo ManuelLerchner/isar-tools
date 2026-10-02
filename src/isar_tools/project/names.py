@@ -133,6 +133,7 @@ class Entity:
     mixfix: str = ""  # the text inside a constant's mixfix annotation; "" if none
     notation: str = ""  # the first string or cartouche of the mixfix; "" if none
     mode: str = ""  # the syntax mode of `abbreviation (input)`: "input"; "" if none
+    command_index: int = -1  # of the declaring command in `Theory.commands`
 
     @property
     def qualified(self) -> str:
@@ -418,6 +419,7 @@ def entities(theory: Theory, name: str, path: Path, derived: bool = False) -> It
                     mixfix=declared.mixfix,
                     notation=declared.notation,
                     mode=mode,
+                    command_index=i,
                 )
                 yield entity
                 member = partial(replace, entity, doc="", member=True, mode="")
