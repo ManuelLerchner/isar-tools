@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-10-03)
 
 - `isar check redundant` keeps lemmas from anonymous and extended contexts within
   their originating block and its nested blocks. It no longer suggests using a
