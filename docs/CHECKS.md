@@ -620,6 +620,13 @@ or one it imports, at theory level or in a locale B's locale extends. Not
 read: lemmas with several conclusions or `obtains`, and B with an attribute
 that registers it (`[simp]`), which A might not replace.
 
+Anonymous and extended context blocks can add assumptions that are absent from
+a lemma's written statement. A lemma from such a block is considered only inside
+that same block or its nested blocks, never after it ends or in another theory.
+Other unmodeled local-theory blocks receive the same conservative treatment;
+their exported premises are not inferred. Plain named locale contexts retain
+the locale-ancestry checks above.
+
 ### `duplicate-lemma`
 
 A lemma stating another lemma again (heuristic).

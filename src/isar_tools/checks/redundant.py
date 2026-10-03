@@ -26,6 +26,13 @@ A is considered only where B could cite it: declared before B, in B's theory
 or one it imports, at theory level or in a locale B's locale extends. Not
 read: lemmas with several conclusions or ``obtains``, and B with an attribute
 that registers it (``[simp]``), which A might not replace.
+
+Anonymous and extended context blocks can add assumptions that are absent from
+a lemma's written statement. A lemma from such a block is considered only inside
+that same block or its nested blocks, never after it ends or in another theory.
+Other unmodeled local-theory blocks receive the same conservative treatment;
+their exported premises are not inferred. Plain named locale contexts retain
+the locale-ancestry checks above.
 """
 
 from collections.abc import Iterable, Iterator
@@ -40,6 +47,7 @@ from isar_tools.project.model import Project
 from isar_tools.project.names import entities
 from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_lenient
+from isar_tools.source.keywords import CommandKind
 from isar_tools.source.lexer import Kind, LineIndex, Token
 from isar_tools.source.symbols import SYMBOL_RE
 from isar_tools.source.theory import Theory, parse_theory, significant, unquote
@@ -147,6 +155,7 @@ class _Lemma:
     offset: int  # of its name
     index: int  # of its command
     scope: str  # its locale; "" at theory level
+    contexts: tuple[int, ...]  # enclosing unmodeled block command indices, outermost first
     statement: Statement
     registers: bool  # carries a registering attribute
     lines: LineIndex
@@ -308,9 +317,33 @@ def _registers(args: list[Token]) -> bool:
     return any(name not in INERT_ATTRIBUTES for name in attribute_names(group))
 
 
+def _contexts(theory: Theory) -> dict[int, tuple[int, ...]]:
+    """Keep unmodeled local assumptions inside the blocks that introduce them."""
+    stack: list[tuple[int, bool]] = []
+    contexts: dict[int, tuple[int, ...]] = {}
+    for i, command in enumerate(theory.commands):
+        if command.name == "end":
+            if stack:
+                stack.pop()
+            continue
+        contexts[i] = tuple(index for index, opaque in stack if opaque)
+        if command.kind is not CommandKind.THY_DECL_BLOCK:
+            continue
+        toks = list(significant(command.tokens(theory.tokens)))
+        if toks[-1].text != "begin":
+            continue
+        # Only these named scopes are modeled by _Checker.parents and Entity.scope.
+        named = command.name in {"locale", "class"} or (
+            command.name == "context" and len(toks) == 3
+        )
+        stack.append((i, not named))
+    return contexts
+
+
 def _lemmas(theory: Theory, path: Path, checker: "_Checker") -> Iterator[_Lemma]:
     """The lemmas of ``theory``, read from ``path``."""
     name = theory.header.name.text if theory.header else path.stem
+    contexts = _contexts(theory)
     for e in entities(theory, name, path):
         if e.kind != "fact" or e.member or e.command not in _GOALS:
             continue
@@ -325,7 +358,16 @@ def _lemmas(theory: Theory, path: Path, checker: "_Checker") -> Iterator[_Lemma]
         if found is not None:
             offset = toks[at].start
             yield _Lemma(
-                e.name, path, e.line, offset, index, e.scope, found, registers, theory.lines
+                e.name,
+                path,
+                e.line,
+                offset,
+                index,
+                e.scope,
+                contexts[index],
+                found,
+                registers,
+                theory.lines,
             )
 
 
@@ -370,6 +412,11 @@ class _Checker:
 
     def citable(self, general: _Lemma, special: _Lemma) -> bool:
         """Whether ``special``'s context can cite ``general``."""
+        if general.contexts and (
+            general.path != special.path
+            or special.contexts[: len(general.contexts)] != general.contexts
+        ):
+            return False
         if general.path == special.path:
             if general.index >= special.index:
                 return False

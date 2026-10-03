@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `isar check redundant` keeps lemmas from anonymous and extended contexts within
+  their originating block and its nested blocks. It no longer suggests using a
+  theorem conditional on a contract to prove that contract outside the context.
+  Named locale ancestry and comparisons within a shared block remain supported.
 - `isar check attributes` reports `inline-declare`: attributes on a separate
   `declare` immediately following their definition, named theorem, or inductive
   rules. `--fix=all` moves common registration attributes inline; custom attributes

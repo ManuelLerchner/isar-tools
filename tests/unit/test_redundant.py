@@ -1,9 +1,115 @@
+import pytest
+
 from isar_tools.checks.redundant import Statement, check_redundant, instance, split_prop, statement
 from isar_tools.checks.terms import spelling, term_tokens
 from isar_tools.project.workspace import collect
 from isar_tools.source.lexer import tokenize
 from isar_tools.source.theory import significant
 from tests.conftest import MakeProject
+
+
+def test_contract_assumption_cannot_prove_its_interpretation(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories Contract Instance\n",
+            "Contract.thy": """theory Contract imports Main begin
+locale contract = fixes gamma :: "nat => nat" assumes monotone: "mono gamma"
+context fixes g :: "nat => nat" assumes valid: "contract g" begin
+lemma unit_gammaDG_mono: "mono g"
+  using valid by (simp add: contract_def)
+end
+end
+""",
+            "Instance.thy": """theory Instance imports Contract begin
+definition gammaDG_relc :: "nat => nat" where "gammaDG_relc x = x"
+lemma gammaDG_relc_mono: "mono gammaDG_relc"
+  by (simp add: gammaDG_relc_def mono_def)
+interpretation concrete: contract gammaDG_relc
+  by standard (rule gammaDG_relc_mono)
+end
+""",
+        }
+    )
+    assert not check_redundant(collect([base / "Instance.thy"]))
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        'context fixes g :: "nat => nat" assumes contract: "mono g" begin',
+        'context assumes contract: "mono g" begin',
+        'context L assumes contract: "mono g" begin',
+        "context includes configured begin",
+        "context begin",
+        "instantiation nat :: order begin",
+    ],
+)
+@pytest.mark.parametrize("sibling", [False, True])
+def test_context_boundaries(make_project: MakeProject, header: str, sibling: bool) -> None:
+    target = 'lemma target: "mono g" sorry\n'
+    if sibling:
+        target = f"{header}\n{target}end\n"
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": 'theory T imports Main begin\nlocale L = fixes g :: "nat => nat"\n'
+            f'{header}\nlemma general: "mono g" sorry\nend\n{target}end\n',
+        }
+    )
+    assert not check_redundant(collect([base]))
+
+
+def test_nested_contexts_and_named_locale_reopening(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": """theory T imports Main begin
+locale L = fixes g :: "nat => nat" begin
+context assumes contract: "mono g" begin
+lemma general: "mono g" sorry
+lemma same_block: "mono g" sorry
+context assumes extra: "True" begin
+lemma nested: "mono g" sorry
+end
+lemma back_in_outer: "mono g" sorry
+end
+lemma outside_assumptions: "mono g" sorry
+end
+context L begin
+lemma reopened: "mono g" sorry
+end
+end
+""",
+        }
+    )
+    found = check_redundant(collect([base]))
+    assert [f.message.split()[0] for f in found] == [
+        "same_block",
+        "nested",
+        "back_in_outer",
+        "reopened",
+    ]
+    # Reopening the locale sees only the lemma outside the extra assumptions.
+    assert "states outside_assumptions" in found[-1].message
+
+
+def test_global_fact_remains_available_inside_context(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": """theory T imports Main begin
+lemma general: "mono g" sorry
+context assumes extra: "True" begin
+lemma inside: "mono g" sorry
+end
+end
+""",
+        }
+    )
+    found = check_redundant(collect([base]))
+    assert len(found) == 1
+    assert found[0].message.startswith("inside states general")
+
 
 BASE = r"""theory Base imports Main begin
 definition step :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "step a b = a"
