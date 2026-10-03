@@ -27,9 +27,9 @@ project graph prints the theory import graph.](https://raw.githubusercontent.com
 
 Isabelle checks that every proof goes through. It has nothing to say about a
 lemma no proof cites, an import another import already brings in, a constant
-written out next to the notation the project gave it, a locale assumption no
-proof uses, or a `sorry` left in a theory nobody builds. In a development of a
-few hundred theories these pile up, the build slows down, and reviewers check
+written out next to the notation the project gave it, or a locale assumption no
+proof uses. In a development of a few hundred theories these pile up, the build
+slows down, and reviewers check
 style by eye. Other languages have formatters, linters, and dead-code finders
 for this. Large Isabelle projects mostly have conventions in a README.
 
