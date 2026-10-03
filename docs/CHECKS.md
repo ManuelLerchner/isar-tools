@@ -6,23 +6,24 @@
 
 A comment `(* isar-ignore *)` after code silences every finding on its line; alone on a line, it silences the next line. `(* isar-ignore: oops, tab *)` silences only those codes. `--ignore CODE` drops a code everywhere, and `--allow NAME` (or `check.allow`) accepts a name in `locales`, `notation`, `prose`, and `unused`.
 
-| Group                     | Codes                                                                                                                                                          | Runs       |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| [`project`](#project)     | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` | by default |
-| [`proofs`](#proofs)       | `unfinished-proof`, `oops`, `unclosed-proof`                                                                                                                   | by default |
-| [`syntax`](#syntax)       | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            | by default |
-| [`symbols`](#symbols)     | `non-ascii`                                                                                                                                                    | when named |
-| [`docs`](#docs)           | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
-| [`locales`](#locales)     | `locale-free-variable`                                                                                                                                         | when named |
-| [`notation`](#notation)   | `spelled-out-notation`, `spelled-out-abbreviation`                                                                                                             | when named |
-| [`unused`](#unused)       | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
-| [`redundant`](#redundant) | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
-| [`hygiene`](#hygiene)     | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
-| [`leftovers`](#leftovers) | `proof-search`, `counterexample-search`, `goal-reordering`, `backtracking`, `diagnostic-command`                                                               | when named |
-| [`methods`](#methods)     | `empty-modifier`, `duplicate-fact`, `single-apply`                                                                                                             | when named |
-| [`retired`](#retired)     | `retired-identifier`                                                                                                                                           | when named |
-| [`prose`](#prose)         | `prose-reference`, `prose-underscore`                                                                                                                          | when named |
-| [`links`](#links)         | `broken-link`, `broken-anchor`, `anchor-name`                                                                                                                  | when named |
+| Group                       | Codes                                                                                                                                                          | Runs       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| [`project`](#project)       | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` | by default |
+| [`proofs`](#proofs)         | `unfinished-proof`, `oops`, `unclosed-proof`                                                                                                                   | by default |
+| [`syntax`](#syntax)         | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            | by default |
+| [`symbols`](#symbols)       | `non-ascii`                                                                                                                                                    | when named |
+| [`docs`](#docs)             | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
+| [`locales`](#locales)       | `locale-free-variable`                                                                                                                                         | when named |
+| [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`                                                                                                             | when named |
+| [`unused`](#unused)         | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
+| [`redundant`](#redundant)   | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
+| [`hygiene`](#hygiene)       | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
+| [`leftovers`](#leftovers)   | `proof-search`, `counterexample-search`, `goal-reordering`, `backtracking`, `diagnostic-command`                                                               | when named |
+| [`methods`](#methods)       | `empty-modifier`, `duplicate-fact`, `single-apply`                                                                                                             | when named |
+| [`attributes`](#attributes) | `inline-declare`                                                                                                                                               | when named |
+| [`retired`](#retired)       | `retired-identifier`                                                                                                                                           | when named |
+| [`prose`](#prose)           | `prose-reference`, `prose-underscore`                                                                                                                          | when named |
+| [`links`](#links)           | `broken-link`, `broken-anchor`, `anchor-name`                                                                                                                  | when named |
 
 ## project
 
@@ -862,6 +863,44 @@ lemma join_idem: "join a a = a"
 
 ```console
 Tour.thy:14:3: single-apply: one apply and done: write by
+```
+
+## attributes
+
+Separate attributes that can live beside their declaration.
+
+`inline-declare` reports a `declare` immediately after the definition,
+single named theorem, or single-predicate inductive declaration that owns its
+fact. Comments may separate them; intervening commands and context boundaries
+are never crossed. For definitions, attributes belong on the equation after
+`where`, not on the constant. Attributes on `p.intros` go on every rule.
+
+Fixes require `--fix=all`: moving registration into a command can affect its
+internal processing. Only common registration attributes (`simp`, `intro`,
+`elim`, `dest`, `iff`, `code`, `code_unfold`, `code_post`) are fixed.
+Custom attributes and declarations containing comments are report-only.
+Theorem-transforming attributes such as `symmetric` and `of` are excluded:
+inlining them would change the stored fact. Attribute deletion is excluded too.
+Generated facts from other packages, selected facts, explicit targets, and
+declarations of multiple facts are outside this check's scope.
+
+Separate configuration can be intentional even next to a declaration. Keep it
+with `(* isar-ignore: inline-declare *)` on the `declare` line or immediately
+before it. Imported facts and later policy changes are left alone automatically.
+
+### `inline-declare`
+
+Attributes declared separately from their adjacent owner.
+
+`Gallery.thy`:
+
+```isabelle
+definition inline_zero :: nat where "inline_zero = 0"
+declare inline_zero_def [code_unfold]
+```
+
+```console
+Gallery.thy:70:1: inline-declare: inline_zero_def: attach attributes to the preceding definition
 ```
 
 ## retired

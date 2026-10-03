@@ -5,6 +5,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from isar_tools.checks.attributes import check_attributes
 from isar_tools.checks.docs import check_docs
 from isar_tools.checks.findings import CODES, DEFAULT_GROUPS, GROUPS, Finding, unsuppressed
 from isar_tools.checks.fixes import MODES, apply_fixes, wanted
@@ -196,7 +197,16 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
         if retired is not None:
             findings += check_retired(source.path, text, retired)
     parsed: dict[Path, Theory] = {}
-    if groups & {"proofs", "syntax", "symbols", "docs", "leftovers", "methods", "prose"}:
+    if groups & {
+        "proofs",
+        "syntax",
+        "symbols",
+        "docs",
+        "leftovers",
+        "methods",
+        "prose",
+        "attributes",
+    }:
         for source in readable:
             theory = parsed[source.path] = source.parse()
             if "proofs" in groups:
@@ -208,6 +218,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
                 findings += check_leftovers(source.path, theory)
             if "methods" in groups:
                 findings += check_methods(source.path, theory)
+            if "attributes" in groups:
+                findings += check_attributes(source.path, theory)
             if "symbols" in groups:
                 findings += check_symbols(
                     source.path, theory, include_comments=args.include_comments
@@ -271,6 +283,7 @@ _GROUP_COLORS = {
     "hygiene": "magenta",
     "leftovers": "yellow",
     "methods": "yellow",
+    "attributes": "yellow",
     "retired": "red",
     "prose": "green",
     "links": "blue",
