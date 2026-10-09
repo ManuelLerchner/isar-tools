@@ -8,6 +8,10 @@
 - `spelled-out-notation` no longer suggests the `adhoc_overloading` generic for a class
   parameter inside an `instantiation` of its class or a subclass, where the parameter
   has no variant at the instance type yet.
+- The `spelled-out-notation` fix drops the parentheses around an argument that lands in
+  a slot between two delimiters with priority 0: `aval_abs (N 0) d` becomes
+  `\<lbrakk>N 0\<rbrakk>\<^sup>\<sharp> d`. Tuples, other slots, and nonzero
+  priorities keep them.
 
 ## 0.8.0 (2026-10-03)
 

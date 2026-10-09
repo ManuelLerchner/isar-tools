@@ -10,6 +10,12 @@ text \<open>An infix passed unapplied, and an overloaded name Isabelle could not
 
 lemma partial: "map (widen a) xs = ys" "map (gamma_int) zs = ws" sorry
 
-lemma "True" using written_out partial by simp
+text \<open>Brackets an argument needs only outside a slot between delimiters.\<close>
+
+lemma brackets:
+  "eval (Suc n) d = eval (n, m) d" "eval ((a) + (b)) d = eval () d" "tight (Suc n) = 0"
+  sorry
+
+lemma "True" using written_out partial brackets by simp
 
 end

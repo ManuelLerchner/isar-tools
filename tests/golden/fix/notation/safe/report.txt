@@ -7,7 +7,13 @@ T.thy:6:70: spelled-out-abbreviation: step (f y) (f y) is written out; it is the
 T.thy:7:3: unfinished-proof: sorry leaves the goal unproved
 T.thy:11:22: spelled-out-notation: widen is written out; its notation is _ \<nabla> _ [*]
 T.thy:11:66: unfinished-proof: sorry leaves the goal unproved
+T.thy:16:4: spelled-out-notation: eval is written out; its notation is \<lbrakk>_\<rbrakk>\<^sup>\<sharp> [*]
+T.thy:16:21: spelled-out-notation: eval is written out; its notation is \<lbrakk>_\<rbrakk>\<^sup>\<sharp> [*]
+T.thy:16:37: spelled-out-notation: eval is written out; its notation is \<lbrakk>_\<rbrakk>\<^sup>\<sharp> [*]
+T.thy:16:58: spelled-out-notation: eval is written out; its notation is \<lbrakk>_\<rbrakk>\<^sup>\<sharp> [*]
+T.thy:16:70: spelled-out-notation: tight is written out; its notation is \<lfloor>_\<rfloor> [*]
+T.thy:17:3: unfinished-proof: sorry leaves the goal unproved
 --- stderr
 fixed 0 findings
-8 findings: 5 spelled-out-notation, 2 unfinished-proof, 1 spelled-out-abbreviation
-6 with --fix=all
+14 findings: 10 spelled-out-notation, 3 unfinished-proof, 1 spelled-out-abbreviation
+11 with --fix=all

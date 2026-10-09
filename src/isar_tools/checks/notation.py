@@ -61,6 +61,8 @@ from pathlib import Path
 from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.checks.locales import bound_names, term_text
 from isar_tools.checks.terms import (
+    CLOSERS,
+    OPENERS,
     TEXTS,
     argument_end,
     arguments,
@@ -158,6 +160,8 @@ class ShortForm:
     short: str = ""
     parameters: tuple[str, ...] = ()
     mode: str = ""  # "input" for `notation (input)`
+    # The `_` slots of `short` that take an argument without its brackets.
+    bare: frozenset[int] = frozenset()
 
     @property
     def applied(self) -> bool:
@@ -314,17 +318,34 @@ def _pattern(text: str) -> tuple[str, ...]:
     return tuple(encode(t.text) for t in tokenize(text) if t.kind not in IGNORABLE)
 
 
-def _shown(mixfix: str, notation: str) -> tuple[str, int] | None:
-    """The notation a mixfix writes and its arity; None if it has no notation
-    to suggest."""
+def _shown(mixfix: str, notation: str) -> tuple[str, int, frozenset[int]] | None:
+    """The notation a mixfix writes, its arity, and its bare slots; None if it
+    has no notation to suggest."""
     try:
         written = template(mixfix, notation)
+        infix = mixfix.partition(" ")[0] in INFIX
+        # `'_` quotes the underscore: it is no slot.
+        arity = 0 if infix else len(re.findall(r"(?<!')_", written))
+        bare = _bare(mixfix, written, arity) if arity else frozenset[int]()
+        return (written, arity, bare) if written else None
     except NotationError:
         return None
-    infix = mixfix.partition(" ")[0] in INFIX
-    # `'_` quotes the underscore: it is no slot.
-    arity = 0 if infix else len(re.findall(r"(?<!')_", written))
-    return (written, arity) if written else None
+
+
+def _bare(mixfix: str, written: str, arity: int) -> frozenset[int]:
+    """The slots of ``written`` between two delimiters whose priority is 0:
+    a term fills them without brackets, as in ``\\<lbrakk>_\\<rbrakk>``."""
+    toks = [t for t in tokenize(mixfix) if t.kind not in IGNORABLE]
+    at = next((i for i, t in enumerate(toks) if t.kind in (Kind.STRING, Kind.CARTOUCHE)), 0)
+    listed: list[int] = []
+    if at + 1 < len(toks) and toks[at + 1].text == "[":
+        listed = [int(t.text) for t in bracket_group(toks, at + 1)[0] if t.text.isdigit()]
+    priorities = [*listed, *[0] * arity][:arity]  # unlisted arguments have priority 0
+    marked = fill(written, "", [f"\0{k}\0" for k in range(arity)]).replace(" ", "")
+    pieces = marked.split("\0")  # delimiters at even indices, slots at odd ones
+    return frozenset(
+        k for k in range(arity) if priorities[k] == 0 and pieces[2 * k] and pieces[2 * k + 2]
+    )
 
 
 def _in_bundle(scope: Scope) -> str:
@@ -348,7 +369,15 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
             name = unquote(part[0]).rpartition(".")[2]
             advice = f"its notation is {shown[0]}{_in_bundle(scope)}"
             yield ShortForm(
-                (encode(name),), advice, shown[1], scope, path, index, short=shown[0], mode=mode
+                (encode(name),),
+                advice,
+                shown[1],
+                scope,
+                path,
+                index,
+                short=shown[0],
+                mode=mode,
+                bare=shown[2],
             )
 
 
@@ -425,7 +454,15 @@ def _declared_forms(theory: Theory, path: Path, blocks: list[Scope]) -> Iterator
         advice = f"its notation is {shown[0]}"
         scope = _entity_scope(e)
         yield ShortForm(
-            (encode(e.name),), advice, shown[1], scope, path, index, parameter, short=shown[0]
+            (encode(e.name),),
+            advice,
+            shown[1],
+            scope,
+            path,
+            index,
+            parameter,
+            short=shown[0],
+            bare=shown[2],
         )
 
 
@@ -692,6 +729,21 @@ def _args_after(toks: list[Token], text: str, i: int, n: int) -> tuple[list[str]
     return out, i
 
 
+def _unbracketed(toks: list[Token], text: str, i: int) -> str:
+    """The source of the argument at ``toks[i]`` without the parentheses around
+    it; a tuple ``(a, b)`` or ``()`` keeps them."""
+    stop = argument_end(toks, i)
+    source = text[toks[i].start : toks[stop - 1].end]
+    if toks[i].text != "(" or stop - i < 3:
+        return source
+    depth = 0
+    for tok in toks[i + 1 : stop - 1]:
+        depth += (encode(tok.text) in OPENERS) - (encode(tok.text) in CLOSERS)
+        if depth == 0 and tok.text == ",":
+            return source
+    return text[toks[i + 1].start : toks[stop - 2].end]
+
+
 def _rewrite(form: ShortForm, toks: list[Token], text: str, j: int, end: int) -> Edit | None:
     """The edit of ``text`` that writes the match ``toks[j:end]`` (with the
     arguments the form takes) as its short form."""
@@ -723,6 +775,13 @@ def _rewrite(form: ShortForm, toks: list[Token], text: str, j: int, end: int) ->
         (left, right), stop = _args_after(toks, text, end, 2)
         return Edit(at, toks[stop - 1].end, _wrap(toks, j, stop, f"{left} {op} {right}"))
     args, stop = _args_after(toks, text, end, form.arity)
+    starts = [end]
+    for _ in args[:-1]:
+        starts.append(argument_end(toks, starts[-1]))
+    args = [
+        _unbracketed(toks, text, at) if k in form.bare else arg
+        for k, (arg, at) in enumerate(zip(args, starts, strict=True))
+    ]
     filled = fill(notation, "", args)  # `_shown` rejected what `fill` cannot do
     # A mixfix with delimiters on both sides (`\<lbrakk>_\<rbrakk>`) reads as one unit.
     closed = not notation.startswith("_") and not notation.endswith("_")
