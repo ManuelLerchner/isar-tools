@@ -131,7 +131,7 @@ For `fixes widen :: ... (infixl "\<nabla>" 65)` in a class, the entry is
 with also `theory`, `session`, `path`, `line`, `mixfix` (as written),
 `notation` (its template, `_ \<nabla> _` for an infix), `args`, `mode`
 (`input` or `output` of an abbreviation), `expansion` (an abbreviation's `lhs`
-and `rhs`), and the HTML anchors `anchor`, `url`, `owner_anchor`, and
+and `rhs`), `translation` (see below), and the HTML anchors `anchor`, `url`, `owner_anchor`, and
 `owner_url`, as `project names` gives them. `kind` is the shape:
 
 | `kind`                | Declaration                                                                     | `scope`    |
@@ -149,6 +149,23 @@ a `binder` or `structure` mixfix, fails with its location; so does a mixfix
 with more `_` slots than `args`, and an abbreviation that is not one
 `lhs \<equiv> rhs` equation. Notation added later with the `notation` command
 is not read. Nothing is written while any entry fails.
+
+A constant without a mixfix takes its notation from `syntax` and `translations`
+when a rule prints it in a syntax constant's mixfix:
+
+```isabelle
+syntax "_rsem" :: "nat \<Rightarrow> nat \<Rightarrow> nat set" ("\<gamma>\<^bsub>_\<^esub>'(_')")
+translations "\<gamma>\<^bsub>v\<^esub>(r)" == "CONST rsem r v"
+```
+
+With `args = ["r", "v"]`, `rsem` has the symbol `\<gamma>\<^bsub>v\<^esub>(r)`:
+the rule's left side places the arguments in the slots. The rule must print
+(`==` or `<=`), its right side must apply `CONST rsem` to distinct variables,
+and its left side must apply the syntax constant to the same variables, in its
+mixfix or as `_rsem v r`. `mixfix` and `notation` are then the syntax
+constant's, and `translation` holds its `syntax` name and the rule's `lhs` and
+`rhs` (null otherwise); `printed` is false for `syntax (input)`. Two such rules
+for one constant are an error.
 
 With `--browser-info`, an anchor the sources cannot give is looked up in the
 build, as `project anchors` does: that of a theory no session owns, and that of

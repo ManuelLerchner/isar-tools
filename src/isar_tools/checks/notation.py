@@ -1,6 +1,6 @@
 """``notation`` group: a constant written out where it has a short form.
 
-A project gives a constant a short form in four ways, and once it has, every
+A project gives a constant a short form in five ways, and once it has, every
 later term should use it:
 
 - a mixfix on its declaration (``definition``, ``fun``, ``consts``, a class or
@@ -15,6 +15,12 @@ later term should use it:
   (``map (f x)``), or, for a class parameter ``f``, inside an
   ``instantiation`` of its class or a subclass, where ``f`` has no variant at
   the instance type yet;
+- ``syntax`` and ``translations``: a rule ``"lhs" == "CONST f x y"`` (or
+  ``=>``) whose left side applies a syntax constant with a mixfix to the
+  variables ``x y`` in any order, in that mixfix or as ``_f y x``, gives
+  ``f`` the mixfix with its arguments in the order of the left side. Rules
+  with other patterns are not followed, and ``syntax (output)`` gives no short
+  form;
 - any of these inside ``bundle B begin ... end``: the short form holds where
   ``B`` is open, by ``unbundle B`` (until ``unbundle no B``), ``open_bundle``,
   ``includes B``, ``including B``, or a bundle that unbundles ``B``.
@@ -46,7 +52,8 @@ unapplied form ``(op)`` and is always reported. Qualified names
 (``T.f``) are not followed.
 
 ``no_notation f (mixfix)`` ends the short form of ``f`` with that mixfix and
-print mode, and ``no_adhoc_overloading g == f`` that of ``f`` as ``g``. The
+print mode, ``no_adhoc_overloading g == f`` that of ``f`` as ``g``, and
+``no_translations`` that of its rules (``no_syntax`` is not followed). The
 removal is scoped like ``notation``: in its theory and the theories importing
 it, its locale, its anonymous block, or where its bundle is open. It ends only
 short forms introduced before it; another short form of the same constant
@@ -77,7 +84,18 @@ from isar_tools.project.hierarchy import bracket_group, declarations, parse_mixf
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
 from isar_tools.project.names import source as statement_source
-from isar_tools.project.notation import INFIX, NotationError, expansion, fill, template
+from isar_tools.project.notation import (
+    INFIX,
+    NotationError,
+    Syntax,
+    Translation,
+    expansion,
+    fill,
+    syntax_entries,
+    template,
+    translation,
+    translation_rules,
+)
 from isar_tools.project.workspace import SourceFile
 from isar_tools.source.files import read_lenient
 from isar_tools.source.keywords import DOCUMENT, CommandKind
@@ -162,6 +180,9 @@ class ShortForm:
     mode: str = ""  # "input" for `notation (input)`
     # The `_` slots of `short` that take an argument without its brackets.
     bare: frozenset[int] = frozenset()
+    # The argument each slot of `short` takes, if not the slots in order: a
+    # translation may reorder them.
+    order: tuple[int, ...] = ()
 
     @property
     def applied(self) -> bool:
@@ -205,6 +226,7 @@ class _Analysis:
     # they end.
     removals: list[ShortForm]
     includes: dict[str, set[str]]  # bundle -> the bundles it unbundles
+    syntax: dict[str, Syntax]  # syntax constants declared here or in an import
 
 
 def _tokens(theory: Theory, command: Command) -> list[Token]:
@@ -470,9 +492,33 @@ def _opens_block(command: Command, args: list[Token]) -> bool:
     return command.kind is CommandKind.THY_DECL_BLOCK and bool(args) and args[-1].text == "begin"
 
 
-def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Analysis:
+def _translated(t: Translation, scope: Scope, path: Path, index: int) -> ShortForm | None:
+    """The short form a translation rule gives its constant; None if the rule
+    only prints or its syntax is for another print mode."""
+    if not t.parse or t.syntax.mode not in ("", "input"):
+        return None
+    n = len(t.parameters)
+    written = f"{t.written(list(t.parameters))} for {' '.join([t.constant, *t.parameters])}"
+    return ShortForm(
+        (encode(t.constant),),
+        f"its notation is {written}{_in_bundle(scope)}",
+        n,
+        scope,
+        path,
+        index,
+        short=t.template,
+        mode=t.syntax.mode,
+        bare=_bare(t.syntax.mixfix, t.template, n),
+        order=t.order,
+    )
+
+
+def _analyze(
+    path: Path, theory: Theory, opened_before: frozenset[str], syntax: dict[str, Syntax]
+) -> _Analysis:
     """Contexts and short forms of ``theory``, whose imports leave the bundles
-    ``opened_before`` open."""
+    ``opened_before`` open and declare the syntax constants ``syntax``, which
+    collects those of ``theory`` too."""
     goal: dict[int, tuple[set[str], set[str]]] = {}
     for block in theory.goal_blocks():
         bundles: set[str] = set()
@@ -527,6 +573,12 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
             forms += _overloadings(args, scope, path, i)
         elif command.name == "no_adhoc_overloading":
             removals += _overloadings(args, scope, path, i)
+        elif command.name == "syntax":
+            syntax.update((s.name, s) for s in syntax_entries(args))
+        elif command.name in ("translations", "no_translations"):
+            rules = (translation(*rule, syntax) for rule in translation_rules(args))
+            added = [f for t in rules if t and (f := _translated(t, scope, path, i))]
+            (forms if command.name == "translations" else removals).extend(added)
         elif command.name == "unbundle":
             added, removed = _bundle_changes(args)
             if bundle:
@@ -553,7 +605,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
                 block.opened.update(_words_after(args, _INCLUDING))
             stack.append(block)
     forms += _declared_forms(theory, path, blocks)
-    return _Analysis(theory, contexts, frozenset(opened), forms, removals, includes)
+    return _Analysis(theory, contexts, frozenset(opened), forms, removals, includes, syntax)
 
 
 def _field_name(toks: list[Token], i: int) -> bool:
@@ -582,18 +634,20 @@ class _Checker:
         session = self.project.session_of(path)
         header = self.project.header(path)
         opened: set[str] = set()
+        syntax: dict[str, Syntax] = {}
         for imp in header.imports if header else ():
             target = self.project.resolve_import(path, session, imp.text)
             found = self.analysis(target) if target is not None else None
             if found is not None:
                 opened |= found.opened
+                syntax.update(found.syntax)
         theory = parse_theory(read_lenient(path), self.project.keywords_for(path))
         for decl in declarations(theory, path):
             extra = decl.sorts if decl.kind == "class" else []
             self.parents.setdefault(decl.name, set()).update(decl.parents, extra)
             if decl.kind == "class":
                 self.parameters.setdefault(decl.name, set()).update(p.name for p in decl.fixes)
-        result = self.analyses[path] = _analyze(path, theory, frozenset(opened))
+        result = self.analyses[path] = _analyze(path, theory, frozenset(opened), syntax)
         return result
 
     def visible(self, path: Path) -> set[Path]:
@@ -772,15 +826,17 @@ def _rewrite(form: ShortForm, toks: list[Token], text: str, j: int, end: int) ->
         op = notation[2:-2]
         if arguments(toks, end) < 2 or not heads(toks, j):
             return Edit(at, after, f"({op})")
-        (left, right), stop = _args_after(toks, text, end, 2)
+        args, stop = _args_after(toks, text, end, 2)
+        left, right = (args[k] for k in form.order or (0, 1))
         return Edit(at, toks[stop - 1].end, _wrap(toks, j, stop, f"{left} {op} {right}"))
     args, stop = _args_after(toks, text, end, form.arity)
     starts = [end]
     for _ in args[:-1]:
         starts.append(argument_end(toks, starts[-1]))
+    # Slot `k` takes argument `order[k]`.
     args = [
-        _unbracketed(toks, text, at) if k in form.bare else arg
-        for k, (arg, at) in enumerate(zip(args, starts, strict=True))
+        _unbracketed(toks, text, starts[a]) if k in form.bare else args[a]
+        for k, a in enumerate(form.order or range(len(args)))
     ]
     filled = fill(notation, "", args)  # `_shown` rejected what `fill` cannot do
     # A mixfix with delimiters on both sides (`\<lbrakk>_\<rbrakk>`) reads as one unit.

@@ -430,7 +430,7 @@ Gallery.thy:20:22: locale-free-variable: missing_limit in the header of locale c
 
 Terms written out where the project gave them a short form.
 
-A project gives a constant a short form in four ways, and once it has, every
+A project gives a constant a short form in five ways, and once it has, every
 later term should use it:
 
 - a mixfix on its declaration (`definition`, `fun`, `consts`, a class or
@@ -445,6 +445,12 @@ later term should use it:
   (`map (f x)`), or, for a class parameter `f`, inside an
   `instantiation` of its class or a subclass, where `f` has no variant at
   the instance type yet;
+- `syntax` and `translations`: a rule `"lhs" == "CONST f x y"` (or
+  `=>`) whose left side applies a syntax constant with a mixfix to the
+  variables `x y` in any order, in that mixfix or as `_f y x`, gives
+  `f` the mixfix with its arguments in the order of the left side. Rules
+  with other patterns are not followed, and `syntax (output)` gives no short
+  form;
 - any of these inside `bundle B begin ... end`: the short form holds where
   `B` is open, by `unbundle B` (until `unbundle no B`), `open_bundle`,
   `includes B`, `including B`, or a bundle that unbundles `B`.
@@ -476,7 +482,8 @@ unapplied form `(op)` and is always reported. Qualified names
 (`T.f`) are not followed.
 
 `no_notation f (mixfix)` ends the short form of `f` with that mixfix and
-print mode, and `no_adhoc_overloading g == f` that of `f` as `g`. The
+print mode, `no_adhoc_overloading g == f` that of `f` as `g`, and
+`no_translations` that of its rules (`no_syntax` is not followed). The
 removal is scoped like `notation`: in its theory and the theories importing
 it, its locale, its anonymous block, or where its bundle is open. It ends only
 short forms introduced before it; another short form of the same constant

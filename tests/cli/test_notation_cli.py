@@ -248,3 +248,60 @@ def test_anchors_the_sources_cannot_give(
     (base / "n.toml").write_text('[notation.b]\nname = "order.b"\n')
     status, out, _ = run(capsys, *built)
     assert (status, json.loads(out)["notation"][0]["owner_url"]) == (0, None)
+
+
+def test_translations(
+    make_project: MakeProject, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories Syn T",
+            "Syn.thy": r"""theory Syn imports Main begin
+syntax "_rsem" :: "nat \<Rightarrow> nat \<Rightarrow> nat set" ("\<gamma>\<^bsub>_\<^esub>'(_')")
+syntax (input) "_low" :: "nat \<Rightarrow> nat" ("\<lfloor>_\<rfloor>")
+syntax "_two" :: "nat \<Rightarrow> nat" ("\<two> _")
+  "_deux" :: "nat \<Rightarrow> nat" ("\<deux> _")
+end
+""",
+            "T.thy": r"""theory T imports Syn begin
+definition rsem :: "nat \<Rightarrow> nat \<Rightarrow> nat set" where "rsem r v = {r, v}"
+definition low :: "nat \<Rightarrow> nat" where "low n = n"
+definition parsed :: "nat \<Rightarrow> nat" where "parsed n = n"
+definition two :: "nat \<Rightarrow> nat" where "two n = n"
+translations
+  "\<gamma>\<^bsub>v\<^esub>(r)" \<rightleftharpoons> "CONST rsem r v"
+  "_low n" == "CONST low n"
+  "\<two> n" => "CONST parsed n"
+  "\<two> n" <= "CONST two n"
+  "\<deux> n" <= "CONST two n"
+end
+""",
+            "n.toml": '[notation.rsem]\nargs = ["r", "v", "w"]\n'
+            '[notation.low]\nargs = ["n"]\n[notation.parsed]\nargs = ["n"]\n',
+            "bad.toml": '[notation.rsem]\nargs = ["r"]\n[notation.two]\nargs = ["n"]\n',
+        }
+    )
+    monkeypatch.chdir(base)
+    status, out, err = run(capsys, "n.toml")
+    assert (status, err) == (0, [])
+    rows = {row["key"]: row for row in json.loads(out)["notation"]}
+    assert rows["rsem"]["symbol"] == r"\<gamma>\<^bsub>v\<^esub>(r) w"
+    assert rows["rsem"]["notation"] == r"\<gamma>\<^bsub>_\<^esub>'(_')"
+    assert rows["rsem"]["translation"] == {
+        "syntax": "_rsem",
+        "lhs": r"\<gamma>\<^bsub>v\<^esub>(r)",
+        "rhs": "CONST rsem r v",
+    }
+    assert (rows["low"]["symbol"], rows["low"]["printed"]) == (r"\<lfloor>n\<rfloor>", False)
+    # A rule that only parses gives no printed notation.
+    assert (rows["parsed"]["symbol"], rows["parsed"]["translation"]) == ("parsed n", None)
+    status, _, err = run(capsys, "bad.toml")
+    assert (status, err) == (
+        1,
+        [
+            r"isar project notation: T.thy:2: rsem: fewer arguments than the slots of "
+            r"\<gamma>\<^bsub>v\<^esub>(r)",
+            r"isar project notation: T.thy:5: two: translations give it 2 notations: "
+            r"\<two> n, \<deux> n",
+        ],
+    )

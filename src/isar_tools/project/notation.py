@@ -20,13 +20,29 @@ argument names to show; everything else comes from the declaration:
 
 Any other shape (a constant defined inside a locale, a datatype constructor, a
 ``binder`` or ``structure`` mixfix) is reported as unsupported, never guessed.
+
+A constant without a mixfix may take its notation from ``syntax`` and
+``translations``::
+
+    syntax "_rsem" :: "nat \\<Rightarrow> nat \\<Rightarrow> nat set"
+      ("\\<gamma>\\<^bsub>_\\<^esub>'(_')")
+    translations "\\<gamma>\\<^bsub>v\\<^esub>(r)" == "CONST rsem r v"
+
+The rule's right side applies ``CONST c`` to distinct variables; its left side
+applies a syntax constant to the same variables in any order, in the syntax
+constant's mixfix or as ``_rsem v r``. Rules with any other pattern are not
+followed.
 """
 
+import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 
+from isar_tools.project.hierarchy import bracket_group, parse_mixfix
 from isar_tools.project.names import KINDS, Entity
-from isar_tools.source.lexer import Kind, tokenize
-from isar_tools.source.symbols import decode
+from isar_tools.source.lexer import Kind, Token, tokenize
+from isar_tools.source.symbols import decode, encode
 from isar_tools.source.theory import significant, unquote
 
 INFIX = frozenset({"infix", "infixl", "infixr"})
@@ -149,3 +165,145 @@ def expansion(statement: str) -> tuple[str, str]:
         raise NotationError("an abbreviation not written `lhs \\<equiv> rhs` is not supported")
     at, equiv = cuts[0]
     return " ".join(body[:at].split()), " ".join(body[at + len(equiv) :].split())
+
+
+_TEXT = frozenset({Kind.STRING, Kind.CARTOUCHE})
+
+
+@dataclass(frozen=True)
+class Syntax:
+    """An entry of ``syntax (mode) "_c" :: "type" (mixfix)``."""
+
+    name: str
+    mixfix: str
+    notation: str
+    mode: str  # "" for the default mode, else the print mode: "input", "output", ...
+
+
+def _mode(args: list[Token]) -> tuple[str, list[Token]]:
+    """The print mode ``(input)`` that ``args`` start with, and the rest."""
+    if args and args[0].text == "(":
+        group, end = bracket_group(args, 0)
+        return " ".join(t.text for t in group[1:-1]), args[end:]
+    return "", args
+
+
+def syntax_entries(args: list[Token]) -> Iterator[Syntax]:
+    """The entries with a mixfix of a ``syntax`` command, from the tokens after
+    its keyword."""
+    mode, args = _mode(args)
+    for k, tok in enumerate(args):
+        if tok.text != "::" or k == 0 or k + 2 >= len(args) or args[k + 2].text != "(":
+            continue
+        name = unquote(args[k - 1])
+        if k > 1 and args[k - 2].text == "_" and args[k - 2].end == args[k - 1].start:
+            name = "_" + name  # `_c` lexes as `_`, `c`
+        yield Syntax(name, *parse_mixfix(bracket_group(args, k + 2)[0]), mode)
+
+
+# Rule arrows and the directions they work in: (parse, print).
+_ARROWS = {
+    "==": (True, True),
+    "\\<rightleftharpoons>": (True, True),
+    "=>": (True, False),
+    "\\<rightharpoonup>": (True, False),
+    "<=": (False, True),
+    "\\<leftharpoondown>": (False, True),
+}
+
+
+def translation_rules(args: list[Token]) -> Iterator[tuple[str, str, str]]:
+    """The rules ``(logic) "lhs" == "rhs"`` of a ``translations`` command, from
+    the tokens after its keyword, as (lhs, arrow, rhs)."""
+    pats: list[tuple[int, str]] = []  # index of the string, its text
+    arrows: dict[int, str] = {}
+    for i, tok in enumerate(args):
+        if tok.kind in _TEXT:
+            pats.append((i, unquote(tok)))
+        elif encode(tok.text) in _ARROWS:
+            arrows[i] = encode(tok.text)
+    for (i, lhs), (j, rhs) in pairwise(pats):
+        arrow = next((arrows[k] for k in range(i + 1, j) if k in arrows), "")
+        if arrow:
+            yield " ".join(lhs.split()), arrow, " ".join(rhs.split())
+
+
+@dataclass(frozen=True)
+class Translation:
+    """A translation rule that gives the constant ``constant`` the notation
+    of ``syntax``."""
+
+    constant: str  # base name
+    parameters: tuple[str, ...]  # the variables of the right side, in its order
+    syntax: Syntax
+    template: str  # the mixfix's notation with `_` slots
+    order: tuple[int, ...]  # the parameter that fills each slot
+    lhs: str
+    rhs: str
+    parse: bool
+    print: bool
+
+    def written(self, args: list[str]) -> str:
+        """The notation with ``args``, in the constant's order, filled in."""
+        n = len(self.parameters)
+        if len(args) < n:
+            raise NotationError(f"fewer arguments than the slots of {self.lhs}")
+        return fill(self.template, "", [*(args[k] for k in self.order), *args[n:]])
+
+
+def _words(text: str) -> list[Token]:
+    return list(significant(tokenize(text)))
+
+
+def translation(lhs: str, arrow: str, rhs: str, syntax: Mapping[str, Syntax]) -> Translation | None:
+    """The notation the rule ``lhs arrow rhs`` gives a constant; None for a rule
+    of another shape."""
+    right = _words(rhs)
+    if len(right) < 2 or right[0].text != "CONST" or right[1].kind is not Kind.WORD:
+        return None
+    parameters = tuple(t.text for t in right[2:])
+    pattern = any(t.kind is not Kind.WORD or t.text[0].isdigit() for t in right[2:])
+    if pattern or len(set(parameters)) < len(parameters):
+        return None
+    constant = right[1].text.rpartition(".")[2]
+    toks = _words(lhs)
+    left = [t.text for t in toks]
+    if len(toks) > 1 and toks[0].text == "_" and toks[1].start == toks[0].end:
+        left[:2] = ["_" + left[1]]  # `_c` lexes as `_`, `c`
+    applied = bool(left) and left[0] in syntax  # `_c y x`, the syntax constant applied
+    for entry in [syntax[left[0]]] if applied else syntax.values():
+        written = _template(entry, len(parameters))
+        if written is None:
+            continue
+        if applied:
+            slots = tuple(left[1:]) if sorted(left[1:]) == sorted(parameters) else None
+        else:
+            slots = _slots(lhs, written, parameters)
+        if slots is not None:
+            order = tuple(parameters.index(v) for v in slots)
+            parse, print_ = _ARROWS[arrow]
+            return Translation(constant, parameters, entry, written, order, lhs, rhs, parse, print_)
+    return None
+
+
+def _template(entry: Syntax, arity: int) -> str | None:
+    """The notation of ``entry``'s mixfix if it has ``arity`` slots that
+    ``fill`` can fill."""
+    try:
+        written = template(entry.mixfix, entry.notation)
+        fill(written, "", [""] * arity)
+    except NotationError:
+        return None
+    return written if len(re.findall(r"(?<!')_", written)) == arity else None
+
+
+def _slots(lhs: str, written: str, parameters: tuple[str, ...]) -> tuple[str, ...] | None:
+    """The variables ``lhs`` writes in the slots of the notation ``written``,
+    in slot order; None unless it writes each of ``parameters`` once there."""
+    marked = fill(written, "", ["\0"] * len(parameters))
+    names = "|".join(re.escape(v) for v in sorted(parameters, key=len, reverse=True))
+    pieces = [re.escape(p) for p in encode(marked).replace(" ", "").split("\0")]
+    found = re.fullmatch(f"({names})".join(pieces), encode(lhs).replace(" ", ""))
+    if found is None or sorted(found.groups()) != sorted(parameters):
+        return None
+    return found.groups()

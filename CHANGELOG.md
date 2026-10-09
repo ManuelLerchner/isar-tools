@@ -12,6 +12,11 @@
   a slot between two delimiters with priority 0: `aval_abs (N 0) d` becomes
   `\<lbrakk>N 0\<rbrakk>\<^sup>\<sharp> d`. Tuples, other slots, and nonzero
   priorities keep them.
+- `spelled-out-notation` and `isar project notation` follow `syntax` with `translations`:
+  a rule `"lhs" == "CONST c x y"` whose left side writes a syntax constant's mixfix
+  with the variables in any order gives `c` that notation. The check takes `==` and
+  `=>` rules, the table `==` and `<=` rules; `no_translations` ends the short form.
+  Notation rows gain a `translation` column with the syntax constant and the rule.
 
 ## 0.8.0 (2026-10-03)
 
