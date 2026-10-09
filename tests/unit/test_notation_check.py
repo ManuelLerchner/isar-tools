@@ -485,3 +485,78 @@ end
         r"\<gamma>\<^bsub>Suc v\<^esub>(f r)",
         r"\<lfloor>Suc n\<rfloor>",
     ]
+
+
+def ambiguities(
+    make_project: MakeProject, theories: dict[str, tuple[str, str]]
+) -> list[tuple[str, int, str]]:
+    """The ambiguous-notation findings of ``{name: (imports, body)}``."""
+    files = {
+        f"{name}.thy": f"theory {name} imports {imports} begin\n{body}\nend\n"
+        for name, (imports, body) in theories.items()
+    }
+    base = make_project({"ROOT": f"session S = HOL + theories {' '.join(theories)}\n", **files})
+    findings = check_notation(collect([base / name for name in files]))
+    return [(f.path.stem, f.line, f.message) for f in findings if f.code == "ambiguous-notation"]
+
+
+AMBIGUOUS = "terms using it are ambiguous"
+
+
+def test_ambiguous_notation(make_project: MakeProject) -> None:
+    base = r"""class dom = fixes gamma :: "'a \<Rightarrow> int set" ("\<gamma>")
+consts gamma_S :: "'s \<Rightarrow> 'v set" ("\<gamma>")
+adhoc_overloading gamma_S == gamma
+consts f :: "nat \<Rightarrow> nat" consts h :: "int \<Rightarrow> nat"
+consts g :: "'a \<Rightarrow> nat" ("\<G>")
+adhoc_overloading g == f h
+notation gamma ("\<gamma>")
+definition meet :: "nat \<Rightarrow> nat \<Rightarrow> nat" ("_ \<sqinter>\<^sub>m _" [70, 71] 70)
+  where "meet a b = a"
+notation (input) f ("\<gamma>")
+consts gamma_P :: "'s \<Rightarrow> nat" ("\<gamma> _")"""
+    theories = {
+        "Base": ("Main", base),
+        "T": ("Base", r'definition inf_m (infixl "\<sqinter>\<^sub>m" 65) where "inf_m a b = a"'),
+        "Other": ("Main", r"""consts gamma_O :: "'s \<Rightarrow> 'v set" ("\<gamma>")"""),
+    }
+    assert ambiguities(make_project, theories) == [
+        ("Base", 3, r"gamma_S has the notation \<gamma> of gamma (Base.thy:2); " + AMBIGUOUS),
+        # Notation given again clashes again.
+        ("Base", 8, r"gamma has the notation \<gamma> of gamma_S (Base.thy:3); " + AMBIGUOUS),
+        (
+            "T",
+            2,
+            r"inf_m has the notation _ \<sqinter>\<^sub>m _ of meet (Base.thy:9); " + AMBIGUOUS,
+        ),
+    ]
+
+
+def test_ambiguous_notation_scope(make_project: MakeProject) -> None:
+    body = r"""class dom = fixes gamma :: "'a \<Rightarrow> int set" ("\<gamma>")
+no_notation gamma ("\<gamma>")
+consts gamma_S :: "'s \<Rightarrow> 'v set" ("\<gamma>")
+locale l1 = fixes op :: "nat \<Rightarrow> nat" ("\<omega>")
+locale l2 = fixes op2 :: "nat \<Rightarrow> nat" ("\<omega>")
+locale l3 = l1 op3 for op3 :: "nat \<Rightarrow> nat" ("\<omega>")
+context l1 begin
+definition twin :: "nat \<Rightarrow> nat" ("\<omega>") where "twin n = n"
+end
+bundle b begin notation gamma_S ("\<B>") end
+consts beta :: "nat \<Rightarrow> nat" ("\<B>")
+unbundle b
+consts beta2 :: "nat \<Rightarrow> nat" ("\<B>")
+definition rsem :: "nat \<Rightarrow> nat \<Rightarrow> nat set" where "rsem r v = {r, v}"
+syntax "_rsem" :: "nat \<Rightarrow> nat \<Rightarrow> nat set" ("\<rho>\<^bsub>_\<^esub>'(_')")
+translations "\<rho>\<^bsub>v\<^esub>(r)" == "CONST rsem r v"
+consts rho :: "nat \<Rightarrow> nat \<Rightarrow> nat set" ("\<rho>\<^bsub>_\<^esub>'(_')")
+consts weight :: "nat \<Rightarrow> nat" ("\<W>\<index>")"""
+    assert ambiguities(make_project, {"T": ("Main", body)}) == [
+        ("T", 9, r"twin has the notation \<omega> of op (T.thy:5); " + AMBIGUOUS),
+        ("T", 14, r"beta2 has the notation \<B> of gamma_S (T.thy:11); " + AMBIGUOUS),
+        (
+            "T",
+            18,
+            r"rho has the notation \<rho>\<^bsub>_\<^esub>'(_') of rsem (T.thy:17); " + AMBIGUOUS,
+        ),
+    ]

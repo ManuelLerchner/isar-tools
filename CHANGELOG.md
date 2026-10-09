@@ -17,6 +17,9 @@
   with the variables in any order gives `c` that notation. The check takes `==` and
   `=>` rules, the table `==` and `<=` rules; `no_translations` ends the short form.
   Notation rows gain a `translation` column with the syntax constant and the rule.
+- `isar check notation` reports `ambiguous-notation`: a short form with the delimiters
+  and argument slots of another constant's short form in scope, so that Isabelle
+  reports terms using it as ambiguous. The finding names the earlier declaration.
 
 ## 0.8.0 (2026-10-03)
 

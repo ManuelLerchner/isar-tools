@@ -90,6 +90,10 @@ CODES: dict[str, tuple[str, str]] = {
         "notation",
         "a term written out where the project declared an abbreviation for it (heuristic)",
     ),
+    "ambiguous-notation": (
+        "notation",
+        "a short form with the delimiters and argument slots of another one in scope",
+    ),
     "unused-lemma": ("unused", "a named fact nothing in the project cites (heuristic)"),
     "redundant-import": ("unused", "an import that another import of the theory reaches"),
     "unused-import": ("unused", "an import of which the theory uses nothing (heuristic)"),

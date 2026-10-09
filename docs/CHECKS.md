@@ -14,7 +14,7 @@ A comment `(* isar-ignore *)` after code silences every finding on its line; alo
 | [`symbols`](#symbols)       | `non-ascii`                                                                                                                                                    | when named |
 | [`docs`](#docs)             | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
 | [`locales`](#locales)       | `locale-free-variable`                                                                                                                                         | when named |
-| [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`                                                                                                             | when named |
+| [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`, `ambiguous-notation`                                                                                       | when named |
 | [`unused`](#unused)         | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
 | [`redundant`](#redundant)   | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
 | [`hygiene`](#hygiene)       | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
@@ -472,6 +472,14 @@ extending it; inside an anonymous block, only there. A locale's or class's own
 parameters hold already in its header; any other declaration may spell itself
 out in its own defining equations.
 
+`ambiguous-notation`: a short form whose notation has the delimiters and
+argument slots of another constant's short form that holds where it is
+declared, in the same print mode. Isabelle then has two productions for the
+notation and reports terms that use it as ambiguous, often far from the
+declarations. Overloaded constants share their generic's notation and do not
+count. The notation of a parameter of a parent locale does not count either:
+an instance that renames the parameter drops its mixfix.
+
 Terms are read lexically, as for `locales`: the strings and cartouches of
 formal commands, without document text, comments, ML, syntax commands, mixfix
 annotations, and types after `::`. Names bound in the term, or fixed by
@@ -518,6 +526,21 @@ lemma sum_list: "foldr (\<squnion>\<^sub>m) [a, b] 0 = a \<squnion>\<^sub>m (b \
 
 ```console
 Gallery.thy:13:18: spelled-out-abbreviation: foldr (\<squnion>\<^sub>m) [a, b] 0 is written out; it is the abbreviation join_all
+```
+
+### `ambiguous-notation`
+
+A short form with the delimiters and argument slots of another one in scope.
+
+`Gallery.thy`:
+
+```isabelle
+definition meet :: "nat \<Rightarrow> nat \<Rightarrow> nat" (infixl "\<squnion>\<^sub>m" 70) where
+  "meet a b = min a b"
+```
+
+```console
+Gallery.thy:74:12: ambiguous-notation: meet has the notation _ \<squnion>\<^sub>m _ of join (Base.thy:7); terms using it are ambiguous
 ```
 
 ## unused

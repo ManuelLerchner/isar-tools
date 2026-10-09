@@ -42,6 +42,14 @@ extending it; inside an anonymous block, only there. A locale's or class's own
 parameters hold already in its header; any other declaration may spell itself
 out in its own defining equations.
 
+``ambiguous-notation``: a short form whose notation has the delimiters and
+argument slots of another constant's short form that holds where it is
+declared, in the same print mode. Isabelle then has two productions for the
+notation and reports terms that use it as ambiguous, often far from the
+declarations. Overloaded constants share their generic's notation and do not
+count. The notation of a parameter of a parent locale does not count either:
+an instance that renames the parameter drops its mixfix.
+
 Terms are read lexically, as for ``locales``: the strings and cartouches of
 formal commands, without document text, comments, ML, syntax commands, mixfix
 annotations, and types after ``::``. Names bound in the term, or fixed by
@@ -62,7 +70,7 @@ still holds.
 
 import re
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from isar_tools.checks.findings import Edit, Finding, Fix
@@ -105,6 +113,7 @@ from isar_tools.source.theory import Command, Theory, parse_theory, significant,
 
 CODE = "spelled-out-notation"
 ABBREVIATION_CODE = "spelled-out-abbreviation"
+AMBIGUOUS_CODE = "ambiguous-notation"
 
 # Commands whose strings and cartouches are no terms of the theory.
 _NOTEXTS = frozenset(
@@ -719,8 +728,99 @@ def _ends(removal: ShortForm, form: ShortForm, checker: _Checker) -> bool:
     return form.path in checker.visible(removal.path)
 
 
+def _holds(
+    form: ShortForm,
+    path: Path,
+    index: int,
+    context: _Context,
+    bundles: set[str],
+    checker: _Checker,
+    removals: dict[tuple[str, ...], list[ShortForm]],
+) -> bool:
+    """Whether ``form`` holds at command ``index`` of ``path``: it is active
+    there and no removal of it is."""
+    return _active(form, path, index, context, bundles, checker) and not any(
+        _ends(r, form, checker) and _active(r, path, index, context, bundles, checker)
+        for r in removals.get(form.pattern, ())
+    )
+
+
+def _delimiters(form: ShortForm) -> tuple[str, ...] | None:
+    """What a parser sees of ``form``'s notation: the delimiters around and
+    between its argument slots, without layout; None for a form that is no
+    mixfix (an overloading, an abbreviation)."""
+    if form.code != CODE or form.overloaded:
+        return None
+    slots = len(re.findall(r"(?<!')_", form.short))
+    try:
+        marked = fill(form.short, "", ["\0"] * slots)
+    except NotationError:  # a structure index
+        return None
+    return tuple(encode(marked).replace(" ", "").split("\0"))
+
+
+def _inherited(form: ShortForm, context: _Context) -> bool:
+    """Whether ``form`` is the notation of a parameter of a locale that
+    ``context`` only extends: an instance that renames the parameter drops
+    its mixfix, and the parent expression is not read."""
+    return form.home and form.scope.kind == "locale" and form.scope.name != context.locale
+
+
+def _declared_at(theory: Theory, form: ShortForm) -> int:
+    """The offset of the constant's name in the command introducing ``form``."""
+    command = theory.commands[form.after]
+    toks = list(significant(command.tokens(theory.tokens)))
+    name = form.pattern[0]
+    return next((t.start for t in toks if encode(unquote(t)) == name), toks[0].start)
+
+
+def _ambiguities(
+    path: Path,
+    found: _Analysis,
+    by_delimiters: dict[tuple[str, ...], list[ShortForm]],
+    removals: dict[tuple[str, ...], list[ShortForm]],
+    includes: dict[str, set[str]],
+    checker: _Checker,
+) -> Iterator[Finding]:
+    """Short forms ``path`` introduces with the delimiters of another short
+    form that holds there: Isabelle has two productions for them."""
+    for form in sorted((f for f in found.forms if f.path == path), key=lambda f: f.after):
+        delimiters = _delimiters(form)
+        if delimiters is None or form.pattern[0] in checker.allow:
+            continue
+        context = found.contexts[form.after]
+        if form.scope.kind == "locale":  # a parameter's notation lives in its locale
+            context = replace(context, locale=form.scope.name)
+        bundles = _expand(context.bundles, includes)
+        rivals = sorted(
+            (
+                other
+                for other in by_delimiters.get(delimiters, ())
+                if other.pattern != form.pattern
+                and other.mode == form.mode
+                and not _inherited(other, context)
+                and _holds(other, path, form.after, context, bundles, checker, removals)
+            ),
+            key=lambda other: (other.path == path, str(other.path), other.after),
+        )
+        if rivals:
+            other = rivals[0]
+            theirs = checker.analyses[other.path]
+            assert theirs is not None  # every form comes from an analysis
+            line = theirs.theory.lines.line(_declared_at(theirs.theory, other))
+            yield Finding.at(
+                path,
+                found.theory.lines,
+                _declared_at(found.theory, form),
+                AMBIGUOUS_CODE,
+                f"{form.pattern[0]} has the notation {form.short} of {other.pattern[0]} "
+                f"({other.path.name}:{line}); terms using it are ambiguous",
+            )
+
+
 def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
-    """Terms in ``sources`` that write out a constant with a short form."""
+    """Terms in ``sources`` that write out a constant with a short form, and
+    short forms ``sources`` declare with the delimiters of another."""
     by_project: dict[int, tuple[Project, list[Path]]] = {}
     for source in sources:
         by_project.setdefault(id(source.project), (source.project, []))[1].append(source.path)
@@ -733,6 +833,7 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
         analyses = [a for a in checker.analyses.values() if a is not None]
         includes: dict[str, set[str]] = {}
         by_first: dict[str, list[ShortForm]] = {}
+        by_delimiters: dict[tuple[str, ...], list[ShortForm]] = {}
         removals: dict[tuple[str, ...], list[ShortForm]] = {}
         for found in analyses:
             for bundle, names in found.includes.items():
@@ -740,6 +841,8 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
             for removal in found.removals:
                 removals.setdefault(removal.pattern, []).append(removal)
             for form in found.forms:
+                if (delimiters := _delimiters(form)) is not None:
+                    by_delimiters.setdefault(delimiters, []).append(form)
                 session = project.session_of(form.path)
                 # An included theory's abbreviation may fix types the project's own
                 # terms do not have, and is no part of its vocabulary.
@@ -752,6 +855,7 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
             found = checker.analyses[path]
             assert found is not None  # set once the import cycle guard is left
             findings += _check(path, found, by_first, removals, includes, checker)
+            findings += _ambiguities(path, found, by_delimiters, removals, includes, checker)
     return findings
 
 
@@ -855,10 +959,7 @@ def _check(
     theory = found.theory
 
     def holds(form: ShortForm, index: int, context: _Context, bundles: set[str]) -> bool:
-        return _active(form, path, index, context, bundles, checker) and not any(
-            _ends(r, form, checker) and _active(r, path, index, context, bundles, checker)
-            for r in removals.get(form.pattern, ())
-        )
+        return _holds(form, path, index, context, bundles, checker, removals)
 
     for index, command in enumerate(theory.commands):
         context = found.contexts[index]
