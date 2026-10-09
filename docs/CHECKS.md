@@ -441,8 +441,10 @@ later term should use it:
 - `adhoc_overloading g == f`: `f x` should be written `g x`. An
   instance that is a term (`"lift f"`) is matched as that token sequence.
   Not where no type resolves `g`: in an attribute instantiation
-  (`[where x = "f"]`, `[of "f"]`) or as a bracketed argument
-  (`map (f x)`);
+  (`[where x = "f"]`, `[of "f"]`), as a bracketed argument
+  (`map (f x)`), or, for a class parameter `f`, inside an
+  `instantiation` of its class or a subclass, where `f` has no variant at
+  the instance type yet;
 - any of these inside `bundle B begin ... end`: the short form holds where
   `B` is open, by `unbundle B` (until `unbundle no B`), `open_bundle`,
   `includes B`, `including B`, or a bundle that unbundles `B`.

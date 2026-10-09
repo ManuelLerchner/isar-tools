@@ -354,3 +354,43 @@ end
     findings = check_notation(collect([base / "T.thy", base / "U.thy", base / "V.thy"]))
     got = [(f.path.name, f.line, f.message.split(" is written out")[0]) for f in findings]
     assert got == [("T.thy", 6, "widen"), ("T.thy", 9, "cop"), ("V.thy", 2, "cop")]
+
+
+def test_overloaded_class_parameter_in_instantiation(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+class dom = fixes gamma :: "'a \<Rightarrow> int set" ("\<gamma>")
+class sub = dom + fixes size :: "'a \<Rightarrow> nat" ("\<sigma>")
+no_notation gamma ("\<gamma>")
+consts gamma_S :: "'s \<Rightarrow> 'v set" ("\<gamma>")
+adhoc_overloading gamma_S == gamma
+definition g :: "nat \<Rightarrow> nat" where "g n = n"
+adhoc_overloading gamma_S == g
+instantiation bool :: dom begin
+definition gamma_bool_def: "gamma (b :: bool) = {}"
+instance proof
+  show "gamma True = {}" "g n = n" by (simp_all add: gamma_bool_def g_def)
+qed
+end
+instantiation nat :: "{sub, type}" begin
+definition "gamma (n :: nat) = {}"
+definition "size (n :: nat) = n"
+instance ..
+end
+instantiation prod :: (dom, dom) dom begin
+definition "gamma (p :: 'a \<times> 'b) = {}"
+instance ..
+end
+lemma "gamma True = {}" by simp
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    assert [(f.line, f.message.split(" is written out")[0]) for f in findings] == [
+        (12, "g"),  # g is no parameter of dom
+        (17, "size"),  # notation, unlike overloading, holds in the instantiation
+        (24, "gamma"),
+    ]
