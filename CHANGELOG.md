@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `spelled-out-notation` follows `no_notation` and `no_adhoc_overloading`: a short
+  form ends at a removal with the same constant, mixfix, and print mode, scoped like
+  `notation`. Another short form of the constant, such as an overloading, still holds.
+
 ## 0.8.0 (2026-10-03)
 
 - `isar check redundant` keeps lemmas from anonymous and extended contexts within
