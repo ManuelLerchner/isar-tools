@@ -5,6 +5,9 @@
 - `spelled-out-notation` follows `no_notation` and `no_adhoc_overloading`: a short
   form ends at a removal with the same constant, mixfix, and print mode, scoped like
   `notation`. Another short form of the constant, such as an overloading, still holds.
+- `spelled-out-notation` no longer suggests the `adhoc_overloading` generic for a class
+  parameter inside an `instantiation` of its class or a subclass, where the parameter
+  has no variant at the instance type yet.
 
 ## 0.8.0 (2026-10-03)
 

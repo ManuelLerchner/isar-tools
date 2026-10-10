@@ -11,8 +11,10 @@ later term should use it:
 - ``adhoc_overloading g == f``: ``f x`` should be written ``g x``. An
   instance that is a term (``"lift f"``) is matched as that token sequence.
   Not where no type resolves ``g``: in an attribute instantiation
-  (``[where x = "f"]``, ``[of "f"]``) or as a bracketed argument
-  (``map (f x)``);
+  (``[where x = "f"]``, ``[of "f"]``), as a bracketed argument
+  (``map (f x)``), or, for a class parameter ``f``, inside an
+  ``instantiation`` of its class or a subclass, where ``f`` has no variant at
+  the instance type yet;
 - any of these inside ``bundle B begin ... end``: the short form holds where
   ``B`` is open, by ``unbundle B`` (until ``unbundle no B``), ``open_bundle``,
   ``includes B``, ``including B``, or a bundle that unbundles ``B``.
@@ -173,6 +175,7 @@ class _Context:
     bundles: frozenset[str]  # open bundles, before following unbundle chains
     variables: frozenset[str]
     terms: bool  # its strings and cartouches are terms that are checked
+    classes: frozenset[str] = frozenset()  # of the instantiations around it
 
 
 _NO_CONTEXT = _Context("", frozenset(), frozenset(), frozenset(), False)
@@ -185,6 +188,7 @@ class _Block:
     bundle: str = ""  # the bundle whose body this is
     opened: set[str] = field(default_factory=set[str])
     variables: frozenset[str] = frozenset()
+    classes: frozenset[str] = frozenset()  # an instantiation's
 
 
 @dataclass
@@ -266,6 +270,21 @@ def _target(args: list[Token]) -> str:
     if len(args) >= 4 and args[0].text == "(" and args[1].text == "in" and args[3].text == ")":
         return unquote(args[2])
     return ""
+
+
+def _instantiated(args: list[Token]) -> frozenset[str]:
+    """The classes of ``instantiation t and u :: (type) c begin``; a sort
+    ``"{c, d}"`` names several."""
+    at = next((i for i, t in enumerate(args) if t.text == "::"), len(args))
+    classes: set[str] = set()
+    i = at + 1
+    while i < len(args) and args[i].text != "begin":
+        if args[i].text == "(":  # the arity's argument sorts
+            i = bracket_group(args, i)[1]
+            continue
+        classes.update(re.findall(r"[A-Za-z][\w.']*", unquote(args[i])))
+        i += 1
+    return frozenset(classes)
 
 
 def _scope(stack: list[_Block]) -> Scope:
@@ -458,6 +477,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
                 and command.kind not in DOCUMENT
                 and command.name not in _NOTEXTS
                 and "ML" not in command.name,
+                frozenset[str]().union(*(b.classes for b in stack)),
             )
         )
         scope = _scope(stack)
@@ -490,6 +510,8 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
                 block.locale = unquote(args[0])
             elif command.name in ("bundle", "open_bundle"):
                 block.bundle = unquote(args[0])
+            elif command.name == "instantiation":
+                block.classes = _instantiated(args)
             elif command.name == "context":
                 block.opened.update(_words_after(args, _INCLUDING))
             stack.append(block)
@@ -512,6 +534,7 @@ class _Checker:
         self.allow = allow
         self.analyses: dict[Path, _Analysis | None] = {}
         self.parents: dict[str, set[str]] = {}
+        self.parameters: dict[str, set[str]] = {}  # class -> its own parameters
         self._visible: dict[Path, set[Path]] = {}
         self._ancestors: dict[str, set[str]] = {}
 
@@ -531,6 +554,8 @@ class _Checker:
         for decl in declarations(theory, path):
             extra = decl.sorts if decl.kind == "class" else []
             self.parents.setdefault(decl.name, set()).update(decl.parents, extra)
+            if decl.kind == "class":
+                self.parameters.setdefault(decl.name, set()).update(p.name for p in decl.fixes)
         result = self.analyses[path] = _analyze(path, theory, frozenset(opened))
         return result
 
@@ -573,6 +598,10 @@ def _active(
     bundles: set[str],
     checker: _Checker,
 ) -> bool:
+    if form.overloaded and context.classes and len(form.pattern) == 1:
+        classes = set[str]().union(*map(checker.ancestors, context.classes))
+        if any(form.pattern[0] in checker.parameters.get(c, ()) for c in classes):
+            return False  # the class parameter has no variant at the instance type
     if form.path == path and index <= form.after:
         return form.home and index == form.after
     if form.path != path and form.path not in checker.visible(path):
