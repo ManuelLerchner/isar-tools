@@ -20,6 +20,10 @@
 - `isar check notation` reports `ambiguous-notation`: a short form with the delimiters
   and argument slots of another constant's short form in scope, so that Isabelle
   reports terms using it as ambiguous. The finding names the earlier declaration.
+- `isar project renotate CONST --from MIXFIX [PATH...]` rewrites the terms written in a
+  constant's former mixfix into the one its declaration has now, with `--diff` and
+  `--check` like `fmt`. Terms another notation in scope matches at least as fully are
+  left alone, and results are parenthesized where the surrounding term needs it.
 
 ## 0.8.0 (2026-10-03)
 

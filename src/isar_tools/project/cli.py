@@ -13,6 +13,8 @@ from typing import TextIO, cast
 from urllib.parse import quote, unquote
 
 from isar_tools.checks.links import Pages
+from isar_tools.checks.notation import former, renotate
+from isar_tools.config import add_exclude_option
 from isar_tools.project.anchors import Anchor, Index, read_anchors
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
@@ -41,7 +43,7 @@ from isar_tools.project.notation import (
     translation,
     translation_rules,
 )
-from isar_tools.project.workspace import InputError, add_include_option, project_root
+from isar_tools.project.workspace import InputError, add_include_option, load, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
 from isar_tools.source.symbols import decode
@@ -226,6 +228,44 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     add_include_option(notation)
     add_color_option(notation)
     notation.set_defaults(func=run_notation)
+    renotate_view = views.add_parser(
+        "renotate",
+        help="rewrite terms in a constant's former notation into its current one",
+        description="Rewrite the terms that write CONST in its former mixfix (--from, as "
+        "the declaration had it) into the mixfix its declaration has now, in place unless "
+        "--check or --diff is given. A use has the former delimiters and arguments, CONST's "
+        "current notation holds there, and no other notation in scope matches more of it "
+        "(`\\<lbrakk>_\\<rbrakk>\\<^sub>e` is no use of `\\<lbrakk>_\\<rbrakk>`). The "
+        "result is parenthesized where it is an argument or its open end could take more. "
+        "Terms are read lexically, as by `isar check notation`; build afterwards.",
+    )
+    renotate_view.add_argument("constant", metavar="CONST", help="the constant, by name")
+    renotate_view.add_argument(
+        "--from",
+        dest="former",
+        required=True,
+        metavar="MIXFIX",
+        help="the former mixfix: '(\"\\<lbrakk>_\\<rbrakk>\")', 'infixl \"+\" 65', or the "
+        "bare notation",
+    )
+    renotate_view.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        default=[Path()],
+        help=".thy files or directories to rewrite (default: the current directory)",
+    )
+    mode = renotate_view.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--check", action="store_true", help="only list files that would change; exit 1 if any"
+    )
+    mode.add_argument(
+        "--diff", action="store_true", help="print a unified diff instead of writing; exit 1 if any"
+    )
+    add_include_option(renotate_view)
+    add_exclude_option(renotate_view)
+    add_color_option(renotate_view)
+    renotate_view.set_defaults(func=run_renotate)
     anchors = views.add_parser(
         "anchors",
         help="anchors of Isabelle's HTML presentation, by name",
@@ -1125,6 +1165,40 @@ def run_notation(args: argparse.Namespace) -> int:
     write_source(args.out, text)
     print(f"wrote {display_path(args.out)}")
     return 0
+
+
+def run_renotate(args: argparse.Namespace) -> int:
+    try:
+        old = former(args.former)
+    except NotationError as error:
+        raise InputError(f"--from: {error}") from error
+    workspace = load(args.paths, args.include, args.exclude)
+    workspace.note_skipped("project renotate")
+    try:
+        result = renotate(workspace.sources, args.constant, old)
+    except NotationError as error:
+        raise InputError(str(error)) from error
+    for path, line, reason in result.notes:
+        where = f"{display_path(path)}:{line}"
+        print(f"isar project renotate: left as written: {where}: {reason}", file=sys.stderr)
+    changed = 0
+    for theory in workspace.sources:
+        edits = sorted(result.edits.get(theory.path, ()), key=lambda e: e.start, reverse=True)
+        if not edits:
+            continue
+        before = after = theory.read()
+        for e in edits:
+            after = after[: e.start] + e.text + after[e.end :]
+        changed += 1
+        name = display_path(theory.path)
+        if args.check:
+            print(name)
+        elif args.diff:
+            write_diff(before, after, name, sys.stdout, Style.for_stream(args.color, sys.stdout))
+        else:
+            write_source(theory.path, after)
+            print(f"renotated {len(edits)} terms in {name}", file=sys.stderr)
+    return 1 if (args.check or args.diff) and changed else 0
 
 
 def names_table(
