@@ -420,3 +420,68 @@ end
         # The first slot starts the mixfix; the last one has priority 10.
         r"(f a) \<langle>g b | (h c)\<rangle>",
     ]
+
+
+SYNTAX = r"""theory Syn imports Main begin
+definition rsem :: "nat \<Rightarrow> nat \<Rightarrow> nat set" where "rsem r v = {r, v}"
+syntax "_rsem" :: "nat \<Rightarrow> nat \<Rightarrow> nat set" ("\<gamma>\<^bsub>_\<^esub>'(_')")
+syntax (input) "_low" :: "nat \<Rightarrow> nat" ("\<lfloor>_\<rfloor>")
+syntax (output) "_out" :: "nat \<Rightarrow> nat" ("\<lceil>_\<rceil>")
+syntax "_pr" :: "nat \<Rightarrow> nat" ("\<pi> _" [100] 99)
+end
+"""
+
+
+def test_translations(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories Syn T U\n",
+            "Syn.thy": SYNTAX,
+            "T.thy": r"""theory T imports Syn begin
+definition low :: "nat \<Rightarrow> nat" where "low n = n"
+definition out :: "nat \<Rightarrow> nat" where "out n = n"
+definition pr :: "nat \<Rightarrow> nat" where "pr n = n"
+definition pair :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "pair a b = a"
+lemma "rsem r v = {}" sorry
+translations
+  "\<gamma>\<^bsub>v\<^esub>(r)" == "CONST rsem r v"
+  "_low n" => "CONST low n"
+  "\<lceil>n\<rceil>" == "CONST out n"
+  "\<pi> n" <= "CONST pr n"
+  "\<gamma>\<^bsub>a\<^esub>(0)" == "CONST pair 0 a"
+  "\<gamma>\<^bsub>a\<^esub>(b)" == "CONST pair a b c"
+lemma "rsem (f r) (Suc v) = {}" "low (Suc n) = 0" "out n = 0" "pr n = 0" "pair 0 a = 0"
+no_translations "\<gamma>\<^bsub>v\<^esub>(r)" == "CONST rsem r v"
+lemma "rsem r v = {}" sorry
+end
+""",
+            "U.thy": r"""theory U imports Syn begin
+lemma "rsem r v = {}" sorry
+bundle rs begin
+translations "\<gamma>\<^bsub>v\<^esub>(r)" \<rightleftharpoons> "CONST rsem r v"
+end
+lemma "rsem r v = {}" including rs sorry
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy", base / "U.thy"]))
+    assert [(f.path.name, f.line, f.message) for f in findings] == [
+        (
+            "T.thy",
+            14,
+            r"rsem is written out; its notation is \<gamma>\<^bsub>v\<^esub>(r) for rsem r v",
+        ),
+        ("T.thy", 14, r"low is written out; its notation is \<lfloor>n\<rfloor> for low n"),
+        (
+            "U.thy",
+            6,
+            r"rsem is written out; its notation is \<gamma>\<^bsub>v\<^esub>(r) for rsem r v "
+            "(bundle rs)",
+        ),
+    ]
+    # The rule reorders the arguments; the subscript slot needs no brackets.
+    assert [e.text for f in findings if f.fix for e in f.fix.edits][:2] == [
+        r"\<gamma>\<^bsub>Suc v\<^esub>(f r)",
+        r"\<lfloor>Suc n\<rfloor>",
+    ]

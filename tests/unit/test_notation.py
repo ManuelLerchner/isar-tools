@@ -6,13 +6,18 @@ from isar_tools.project.names import Entity, entities
 from isar_tools.project.notation import (
     NotationError,
     Shape,
+    Syntax,
     display,
     expansion,
     fill,
     shape,
+    syntax_entries,
     template,
+    translation,
+    translation_rules,
 )
-from isar_tools.source.theory import parse_theory
+from isar_tools.source.lexer import Token, tokenize
+from isar_tools.source.theory import parse_theory, significant
 
 SOURCE = r"""theory T imports Main begin
 definition sq :: "nat \<Rightarrow> nat" ("\<lfloor>_\<rfloor>\<^sup>2") where "sq n = n * n"
@@ -108,3 +113,62 @@ def test_expansion() -> None:
     ):
         with pytest.raises(NotationError):
             expansion(statement)
+
+
+def _args(source: str) -> list[Token]:
+    return list(significant(tokenize(source)))[1:]
+
+
+def test_syntax_entries() -> None:
+    entries = syntax_entries(
+        _args(
+            r"""syntax (latex output) _a :: "nat \<Rightarrow> nat" ("\<alpha> _" [100] 99)
+  "_b" :: nat "_c" :: "nat"
+  "_d" :: "nat \<Rightarrow> nat \<Rightarrow> nat" (infixl "\<delta>" 60)"""
+        )
+    )
+    assert list(entries) == [
+        Syntax("_a", '"\\<alpha> _" [100] 99', "\\<alpha> _", "latex output"),
+        Syntax("_d", 'infixl "\\<delta>" 60', "\\<delta>", "latex output"),
+    ]
+
+
+def test_translation_rules() -> None:
+    rules = translation_rules(
+        _args(r'translations (logic) "a x" == "CONST f x" "b" "c" \<leftharpoondown> (type) "d"')
+    )
+    assert list(rules) == [("a x", "==", "CONST f x"), ("c", "\\<leftharpoondown>", "d")]
+
+
+SYNTAX = {
+    s.name: s
+    for s in [
+        Syntax("_pair", '"\\<langle>_,/ _\\<rangle>"', "\\<langle>_,/ _\\<rangle>", ""),
+        Syntax("_bot", '"\\<bottom>"', "\\<bottom>", ""),
+        Syntax("_all", 'binder "\\<forall>\\<^sub>s" 10', "\\<forall>\\<^sub>s", ""),
+        Syntax("_ix", '"_\\<index>"', "_\\<index>", ""),
+        Syntax("_plus", 'infixl "\\<oplus>" 65', "\\<oplus>", ""),
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    ("lhs", "rhs", "written"),
+    [
+        ("\\<langle>b, a\\<rangle>", "CONST p a b", "\\<langle>B, A\\<rangle>"),
+        ("_pair b a", "CONST T.p a b", "\\<langle>B, A\\<rangle>"),
+        ("\\<bottom>", "CONST bot", "\\<bottom>"),
+        ("b \\<oplus> a", "CONST p a b", "B \\<oplus> A"),
+        ("\\<langle>a, a\\<rangle>", "CONST p a b", None),  # not each variable once
+        ("_pair a c", "CONST p a b", None),
+        ("\\<langle>a, b\\<rangle>", "CONST p a 0", None),  # a pattern, no variable
+        ("\\<langle>a, b\\<rangle>", "CONST p a a", None),
+        ("\\<langle>a, b\\<rangle>", "p a b", None),  # no CONST
+        ("_all x", "CONST all x", None),  # a binder
+        ("_ix x", "CONST ix x", None),  # a structure index
+        ("", "CONST c", None),
+    ],
+)
+def test_translation(lhs: str, rhs: str, written: str | None) -> None:
+    found = translation(lhs, "==", rhs, SYNTAX)
+    assert (found.written(["A", "B"][: len(found.parameters)]) if found else None) == written

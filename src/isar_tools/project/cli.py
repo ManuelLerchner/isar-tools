@@ -29,12 +29,23 @@ from isar_tools.project.names import (
     matches,
     source,
 )
-from isar_tools.project.notation import NotationError, display, expansion, fill, shape, template
+from isar_tools.project.notation import (
+    NotationError,
+    Translation,
+    display,
+    expansion,
+    fill,
+    shape,
+    syntax_entries,
+    template,
+    translation,
+    translation_rules,
+)
 from isar_tools.project.workspace import InputError, add_include_option, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
 from isar_tools.source.symbols import decode
-from isar_tools.source.theory import Theory, parse_theory
+from isar_tools.source.theory import Theory, parse_theory, significant
 from isar_tools.style import Style, add_color_option, write_diff
 
 
@@ -891,11 +902,50 @@ def _owner(found: list[_Found], of: _Found, kind: str, owner: str) -> _Found | N
     return hits[0] if hits else None
 
 
-def _notation(key: str, of: _Found, args: list[str], found: list[_Found]) -> dict[str, object]:
+def _translations(project: Project, found: list[_Found]) -> dict[str, list[Translation]]:
+    """The translations in the theories of ``project`` and its -d directories
+    that print a constant in a syntax constant's mixfix, by the constant's
+    base name."""
+    theories = {f.entity.path: f.theory for f in found if f.theory is not None}
+    for session in project.sessions.values():
+        for path in project.owned_theories(session).values():
+            if path not in theories:  # a theory that declares no names
+                theories[path] = parse_theory(read_source(path), project.keywords_for(path))
+    commands = [
+        (c.name, list(significant(c.tokens(t.tokens)))[1:])
+        for t in theories.values()
+        for c in t.commands
+        if c.name in ("syntax", "translations")
+    ]
+    syntax = {
+        s.name: s for name, args in commands if name == "syntax" for s in syntax_entries(args)
+    }
+    out: dict[str, list[Translation]] = {}
+    for name, args in commands:
+        if name == "translations":
+            for rule in translation_rules(args):
+                if (t := translation(*rule, syntax)) and t.print:
+                    out.setdefault(t.constant, []).append(t)
+    return out
+
+
+def _notation(
+    key: str,
+    of: _Found,
+    args: list[str],
+    found: list[_Found],
+    translations: dict[str, list[Translation]],
+) -> dict[str, object]:
     e = of.entity
     kind = shape(e)
     written = template(e.mixfix, e.notation)
-    symbol = fill(written, e.name, args)
+    rule: Translation | None = None
+    if not written:
+        rules = {t.lhs: t for t in translations.get(e.name, ())}
+        if len(rules) > 1:
+            raise NotationError(f"translations give it {len(rules)} notations: {', '.join(rules)}")
+        rule = next(iter(rules.values()), None)
+    symbol = rule.written(args) if rule else fill(written, e.name, args)
     sides = expansion(_statement(of)) if e.command == "abbreviation" else None
     owner = _owner(found, of, kind.kind, kind.owner) if kind.owner else None
     return {
@@ -909,14 +959,17 @@ def _notation(key: str, of: _Found, args: list[str], found: list[_Found]) -> dic
         "session": of.session_name,
         "path": _display(e.path),
         "line": e.line,
-        "mixfix": e.mixfix or None,
-        "notation": written or None,
+        "mixfix": (rule.syntax.mixfix if rule else e.mixfix) or None,
+        "notation": (rule.template if rule else written) or None,
         "args": args,
         "symbol": symbol,
         "unicode": display(symbol),
         "mode": e.mode or None,
-        "printed": e.mode != "input",
+        "printed": e.mode != "input" and not (rule and rule.syntax.mode == "input"),
         "expansion": {"lhs": sides[0], "rhs": sides[1]} if sides else None,
+        "translation": (
+            {"syntax": rule.syntax.name, "lhs": rule.lhs, "rhs": rule.rhs} if rule else None
+        ),
         "anchor": anchor(e) or None,
         "url": _url(of) or None,
         "owner_anchor": (anchor(owner.entity) or None) if owner else None,
@@ -1028,6 +1081,7 @@ def run_notation(args: argparse.Namespace) -> int:
     project = _load_dir(args.project, args.include)
     found = _entities(project, external=True)
     found += _pinned(project, (w.file for w, _ in wanted.values()))
+    translations = _translations(project, found)
     pages = Pages()
     index: Index | None = None  # read only when the sources leave an anchor open
     rows: list[dict[str, object]] = []
@@ -1039,7 +1093,7 @@ def run_notation(args: argparse.Namespace) -> int:
             continue
         where = f"{_display(result.entity.path)}:{result.entity.line}"
         try:
-            row = _notation(key, result, slots, found)
+            row = _notation(key, result, slots, found, translations)
         except NotationError as err:
             errors.append(f"{where}: {key}: {err}")
             continue
