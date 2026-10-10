@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-10-10)
 
 - `spelled-out-notation` follows `no_notation` and `no_adhoc_overloading`: a short
   form ends at a removal with the same constant, mixfix, and print mode, scoped like
