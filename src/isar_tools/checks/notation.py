@@ -41,7 +41,14 @@ annotations, and types after ``::``. Names bound in the term, or fixed by
 command, its goal, or its block, are variables. A mixfix needs its arguments,
 so a name is reported only when an argument follows it; an infix also has the
 unapplied form ``(op)`` and is always reported. Qualified names
-(``T.f``) and ``no_notation`` are not followed.
+(``T.f``) are not followed.
+
+``no_notation f (mixfix)`` ends the short form of ``f`` with that mixfix and
+print mode, and ``no_adhoc_overloading g == f`` that of ``f`` as ``g``. The
+removal is scoped like ``notation``: in its theory and the theories importing
+it, its locale, its anonymous block, or where its bundle is open. It ends only
+short forms introduced before it; another short form of the same constant
+still holds.
 """
 
 import re
@@ -148,6 +155,7 @@ class ShortForm:
     # abbreviation, applied to `parameters` in the order its left side has them.
     short: str = ""
     parameters: tuple[str, ...] = ()
+    mode: str = ""  # "input" for `notation (input)`
 
     @property
     def applied(self) -> bool:
@@ -185,6 +193,9 @@ class _Analysis:
     contexts: list[_Context]
     opened: frozenset[str]  # bundles open at the end, at theory level
     forms: list[ShortForm]
+    # What `no_notation` and `no_adhoc_overloading` remove, as the short forms
+    # they end.
+    removals: list[ShortForm]
     includes: dict[str, set[str]]  # bundle -> the bundles it unbundles
 
 
@@ -302,10 +313,13 @@ def _in_bundle(scope: Scope) -> str:
 
 
 def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Iterator[ShortForm]:
-    """``notation (input) f (mixfix) and g (mixfix)``."""
+    """``notation (input) f (mixfix) and g (mixfix)``, or what the same
+    arguments of ``no_notation`` remove."""
+    mode = ""
     if len(args) > 2 and args[0].text == "(" and args[2].text == ")":
         if args[1].text != "input":
             return  # a print mode: the input is still written out
+        mode = "input"
         args = args[3:]
     for part in _split_and(args):
         if len(part) < 2 or part[0].kind not in (Kind.WORD, Kind.STRING) or part[1].text != "(":
@@ -314,11 +328,14 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
         if shown is not None:
             name = unquote(part[0]).rpartition(".")[2]
             advice = f"its notation is {shown[0]}{_in_bundle(scope)}"
-            yield ShortForm((encode(name),), advice, shown[1], scope, path, index, short=shown[0])
+            yield ShortForm(
+                (encode(name),), advice, shown[1], scope, path, index, short=shown[0], mode=mode
+            )
 
 
 def _overloadings(args: list[Token], scope: Scope, path: Path, index: int) -> Iterator[ShortForm]:
-    """``adhoc_overloading g == f "t u" and h == k``; the ``==`` is optional."""
+    """``adhoc_overloading g == f "t u" and h == k``, or what the same
+    arguments of ``no_adhoc_overloading`` remove; the ``==`` is optional."""
     for part in _split_and(args):
         generic = unquote(part[0]).rpartition(".")[2]
         advice = f"it is overloaded as {generic}{_in_bundle(scope)}"
@@ -414,6 +431,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
     contexts: list[_Context] = []
     blocks: list[Scope] = []
     forms: list[ShortForm] = []
+    removals: list[ShortForm] = []
     includes: dict[str, set[str]] = {}
     for i, command in enumerate(theory.commands):
         toks = _tokens(theory, command)
@@ -446,8 +464,12 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
         blocks.append(scope)
         if command.name == "notation":
             forms += _notations(args, scope, path, i)
+        elif command.name == "no_notation":
+            removals += _notations(args, scope, path, i)
         elif command.name == "adhoc_overloading":
             forms += _overloadings(args, scope, path, i)
+        elif command.name == "no_adhoc_overloading":
+            removals += _overloadings(args, scope, path, i)
         elif command.name == "unbundle":
             added, removed = _bundle_changes(args)
             if bundle:
@@ -472,7 +494,7 @@ def _analyze(path: Path, theory: Theory, opened_before: frozenset[str]) -> _Anal
                 block.opened.update(_words_after(args, _INCLUDING))
             stack.append(block)
     forms += _declared_forms(theory, path, blocks)
-    return _Analysis(theory, contexts, frozenset(opened), forms, includes)
+    return _Analysis(theory, contexts, frozenset(opened), forms, removals, includes)
 
 
 def _field_name(toks: list[Token], i: int) -> bool:
@@ -565,6 +587,18 @@ def _active(
     return True
 
 
+def _ends(removal: ShortForm, form: ShortForm, checker: _Checker) -> bool:
+    """Whether ``removal`` removes ``form``: the same constant and short form,
+    in the same print mode, after it."""
+    if (removal.overloaded, removal.mode) != (form.overloaded, form.mode) or form.code != CODE:
+        return False
+    if encode(removal.short) != encode(form.short):
+        return False
+    if removal.path == form.path:
+        return removal.after > form.after
+    return form.path in checker.visible(removal.path)
+
+
 def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
     """Terms in ``sources`` that write out a constant with a short form."""
     by_project: dict[int, tuple[Project, list[Path]]] = {}
@@ -579,9 +613,12 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
         analyses = [a for a in checker.analyses.values() if a is not None]
         includes: dict[str, set[str]] = {}
         by_first: dict[str, list[ShortForm]] = {}
+        removals: dict[tuple[str, ...], list[ShortForm]] = {}
         for found in analyses:
             for bundle, names in found.includes.items():
                 includes.setdefault(bundle, set()).update(names)
+            for removal in found.removals:
+                removals.setdefault(removal.pattern, []).append(removal)
             for form in found.forms:
                 session = project.session_of(form.path)
                 # An included theory's abbreviation may fix types the project's own
@@ -594,7 +631,7 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
         for path in paths:
             found = checker.analyses[path]
             assert found is not None  # set once the import cycle guard is left
-            findings += _check(path, found, by_first, includes, checker)
+            findings += _check(path, found, by_first, removals, includes, checker)
     return findings
 
 
@@ -667,10 +704,18 @@ def _check(
     path: Path,
     found: _Analysis,
     by_first: dict[str, list[ShortForm]],
+    removals: dict[tuple[str, ...], list[ShortForm]],
     includes: dict[str, set[str]],
     checker: _Checker,
 ) -> Iterator[Finding]:
     theory = found.theory
+
+    def holds(form: ShortForm, index: int, context: _Context, bundles: set[str]) -> bool:
+        return _active(form, path, index, context, bundles, checker) and not any(
+            _ends(r, form, checker) and _active(r, path, index, context, bundles, checker)
+            for r in removals.get(form.pattern, ())
+        )
+
     for index, command in enumerate(theory.commands):
         context = found.contexts[index]
         if not context.terms:
@@ -698,7 +743,7 @@ def _check(
                     if (
                         end is not None
                         and (best is None or end > best[1])
-                        and _active(form, path, index, context, bundles, checker)
+                        and holds(form, index, context, bundles)
                     ):
                         best = form, end
                 if best is None:

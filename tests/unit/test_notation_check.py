@@ -277,3 +277,80 @@ end
     [finding] = check_notation(collect([base / "T.thy"]))
     assert finding.code == "spelled-out-abbreviation"
     assert finding.fix is None  # y is not in the term, so the rewrite cannot name it
+
+
+def test_no_notation(make_project: MakeProject) -> None:
+    body = r"""lemma "cop x = x" "widen a b = c"
+no_notation cop ("\<kappa>") and widen (infixl "\<nabla>" 65)
+lemma "cop x = x" "widen a b = c"
+notation cop ("\<kappa>")
+lemma "cop x = x" """
+    assert found(make_project, body) == [(2, "cop"), (2, "widen"), (6, "cop")]
+
+
+def test_no_notation_needs_the_same_mixfix_and_mode(make_project: MakeProject) -> None:
+    body = r"""no_notation cop ("\<delta>")
+no_notation (input) widen (infixl "\<nabla>" 65)
+no_notation (output) get ("_\<langle>_\<rangle>" [1000, 0] 1000)
+lemma "cop x = x" "widen a b = c" "get s x = y"
+notation (input) lift ("\<L>")
+lemma "lift f x = y"
+no_notation (input) lift ("\<L>")
+lemma "lift f x = y" """
+    assert found(make_project, body) == [
+        (5, "cop"),
+        (5, "widen"),
+        (5, "get"),
+        (7, "lift"),
+    ]
+
+
+def test_no_notation_keeps_other_short_forms(make_project: MakeProject) -> None:
+    # gamma_int is also overloaded as gamma, which still holds.
+    body = r"""notation gamma_int ("\<G>")
+lemma "gamma_int i = {i}"
+no_notation gamma_int ("\<G>")
+lemma "gamma_int i = {i}"
+no_adhoc_overloading gamma == gamma_int
+lemma "gamma_int i = {i}" "lift gamma_int i = {i}"
+no_adhoc_overloading gamma "lift gamma_int"
+lemma "lift gamma_int i = {i}" """
+    base = make_project(
+        {"ROOT": ROOT, "Base.thy": BASE, "T.thy": f"theory T imports Base begin\n{body}\nend\n"}
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    assert [(f.line, f.message) for f in findings] == [
+        (3, r"gamma_int is written out; its notation is \<G>"),
+        (5, "gamma_int is written out; it is overloaded as gamma"),
+        (7, "lift gamma_int is written out; it is overloaded as gamma"),
+    ]
+
+
+def test_no_notation_scope(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories Base T U V\n",
+            "Base.thy": BASE,
+            "T.thy": r"""theory T imports Base begin
+context begin
+no_notation widen (infixl "\<nabla>" 65)
+lemma "widen a b = c"
+end
+lemma "widen a b = c"
+bundle no_kappa begin no_notation cop ("\<kappa>") end
+lemma "cop x = x" including no_kappa
+lemma "cop x = x"
+context loc begin
+no_notation op ("\<omega>")
+end
+lemma (in loc) "op x = x"
+no_notation cop ("\<kappa>")
+end
+""",
+            "U.thy": 'theory U imports T begin\nlemma "cop x = x"\nend\n',
+            "V.thy": 'theory V imports Base begin\nlemma "cop x = x"\nend\n',
+        }
+    )
+    findings = check_notation(collect([base / "T.thy", base / "U.thy", base / "V.thy"]))
+    got = [(f.path.name, f.line, f.message.split(" is written out")[0]) for f in findings]
+    assert got == [("T.thy", 6, "widen"), ("T.thy", 9, "cop"), ("V.thy", 2, "cop")]

@@ -471,7 +471,14 @@ annotations, and types after `::`. Names bound in the term, or fixed by
 command, its goal, or its block, are variables. A mixfix needs its arguments,
 so a name is reported only when an argument follows it; an infix also has the
 unapplied form `(op)` and is always reported. Qualified names
-(`T.f`) and `no_notation` are not followed.
+(`T.f`) are not followed.
+
+`no_notation f (mixfix)` ends the short form of `f` with that mixfix and
+print mode, and `no_adhoc_overloading g == f` that of `f` as `g`. The
+removal is scoped like `notation`: in its theory and the theories importing
+it, its locale, its anonymous block, or where its bundle is open. It ends only
+short forms introduced before it; another short form of the same constant
+still holds.
 
 ### `spelled-out-notation`
 
