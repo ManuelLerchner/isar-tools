@@ -394,3 +394,29 @@ end
         (17, "size"),  # notation, unlike overloading, holds in the instantiation
         (24, "gamma"),
     ]
+
+
+def test_fix_drops_brackets_in_delimited_slots(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+locale ev =
+  fixes aval_abs :: "'e \<Rightarrow> 'd \<Rightarrow> 'a" ("\<lbrakk>_\<rbrakk>\<^sup>\<sharp>")
+begin
+lemma "aval_abs (Plus e1 e2) d = aval_abs (N 0) d" sorry
+end
+consts pick :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat"
+notation pick ("(2_ \<langle>_ /'| _\<rangle>)" [0, 0, 10] 100)
+lemma "pick (f a) (g b) (h c) = 0" sorry
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    assert [f.fix.edits[0].text for f in findings if f.fix] == [
+        r"\<lbrakk>Plus e1 e2\<rbrakk>\<^sup>\<sharp>",
+        r"\<lbrakk>N 0\<rbrakk>\<^sup>\<sharp>",
+        # The first slot starts the mixfix; the last one has priority 10.
+        r"(f a) \<langle>g b | (h c)\<rangle>",
+    ]

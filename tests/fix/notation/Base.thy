@@ -5,6 +5,8 @@ definition get :: "nat \<Rightarrow> nat \<Rightarrow> nat" ("_\<langle>_\<rangl
 consts gamma :: "'s \<Rightarrow> nat set" ("\<lbrakk>_\<rbrakk>")
 definition gamma_int :: "int \<Rightarrow> nat set" where "gamma_int i = {}"
 adhoc_overloading gamma == gamma_int
+consts eval :: "'e \<Rightarrow> 'd \<Rightarrow> nat" ("\<lbrakk>_\<rbrakk>\<^sup>\<sharp>")
+consts tight :: "nat \<Rightarrow> nat" ("\<lfloor>_\<rfloor>" [1000] 1000)
 definition step :: "nat \<Rightarrow> nat \<Rightarrow> nat" where "step a b = a"
 abbreviation twice where "twice x \<equiv> step x x"
 end
