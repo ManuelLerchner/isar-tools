@@ -71,6 +71,7 @@ still holds.
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
+from functools import cache
 from pathlib import Path
 
 from isar_tools.checks.findings import Edit, Finding, Fix
@@ -81,6 +82,7 @@ from isar_tools.checks.terms import (
     TEXTS,
     argument_end,
     arguments,
+    atom,
     delimited,
     has_operator,
     heads,
@@ -187,8 +189,10 @@ class ShortForm:
     short: str = ""
     parameters: tuple[str, ...] = ()
     mode: str = ""  # "input" for `notation (input)`
-    # The `_` slots of `short` that take an argument without its brackets.
+    # The `_` slots of `short` that take an argument without its brackets, and
+    # those that take only a name or a bracketed term.
     bare: frozenset[int] = frozenset()
+    tight: frozenset[int] = frozenset()
     # The argument each slot of `short` takes, if not the slots in order: a
     # translation may reorder them.
     order: tuple[int, ...] = ()
@@ -349,23 +353,28 @@ def _pattern(text: str) -> tuple[str, ...]:
     return tuple(encode(t.text) for t in tokenize(text) if t.kind not in IGNORABLE)
 
 
-def _shown(mixfix: str, notation: str) -> tuple[str, int, frozenset[int]] | None:
-    """The notation a mixfix writes, its arity, and its bare slots; None if it
-    has no notation to suggest."""
+_Slots = tuple[frozenset[int], frozenset[int]]
+_NO_SLOTS: _Slots = (frozenset(), frozenset())
+
+
+def _shown(mixfix: str, notation: str) -> tuple[str, int, _Slots] | None:
+    """The notation a mixfix writes, its arity, and its bare and tight slots;
+    None if it has no notation to suggest."""
     try:
         written = template(mixfix, notation)
         infix = mixfix.partition(" ")[0] in INFIX
         # `'_` quotes the underscore: it is no slot.
         arity = 0 if infix else len(re.findall(r"(?<!')_", written))
-        bare = _bare(mixfix, written, arity) if arity else frozenset[int]()
-        return (written, arity, bare) if written else None
+        slots = _slots(mixfix, written, arity) if arity else _NO_SLOTS
+        return (written, arity, slots) if written else None
     except NotationError:
         return None
 
 
-def _bare(mixfix: str, written: str, arity: int) -> frozenset[int]:
-    """The slots of ``written`` between two delimiters whose priority is 0:
-    a term fills them without brackets, as in ``\\<lbrakk>_\\<rbrakk>``."""
+def _slots(mixfix: str, written: str, arity: int) -> _Slots:
+    """The slots of ``written`` between two delimiters whose priority is 0,
+    which a term fills without brackets, as in ``\\<lbrakk>_\\<rbrakk>``; and
+    the slots of priority 1000, which take a name or a bracketed term."""
     toks = [t for t in tokenize(mixfix) if t.kind not in IGNORABLE]
     at = next((i for i, t in enumerate(toks) if t.kind in (Kind.STRING, Kind.CARTOUCHE)), 0)
     listed: list[int] = []
@@ -374,9 +383,8 @@ def _bare(mixfix: str, written: str, arity: int) -> frozenset[int]:
     priorities = [*listed, *[0] * arity][:arity]  # unlisted arguments have priority 0
     marked = fill(written, "", [f"\0{k}\0" for k in range(arity)]).replace(" ", "")
     pieces = marked.split("\0")  # delimiters at even indices, slots at odd ones
-    return frozenset(
-        k for k in range(arity) if priorities[k] == 0 and pieces[2 * k] and pieces[2 * k + 2]
-    )
+    bare = (k for k in range(arity) if priorities[k] == 0 and pieces[2 * k] and pieces[2 * k + 2])
+    return frozenset(bare), frozenset(k for k in range(arity) if priorities[k] >= 1000)
 
 
 def _in_bundle(scope: Scope) -> str:
@@ -408,7 +416,8 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
                 index,
                 short=shown[0],
                 mode=mode,
-                bare=shown[2],
+                bare=shown[2][0],
+                tight=shown[2][1],
             )
 
 
@@ -493,7 +502,8 @@ def _declared_forms(theory: Theory, path: Path, blocks: list[Scope]) -> Iterator
             index,
             parameter,
             short=shown[0],
-            bare=shown[2],
+            bare=shown[2][0],
+            tight=shown[2][1],
         )
 
 
@@ -507,6 +517,7 @@ def _translated(t: Translation, scope: Scope, path: Path, index: int) -> ShortFo
     if not t.parse or t.syntax.mode not in ("", "input"):
         return None
     n = len(t.parameters)
+    slots = _slots(t.syntax.mixfix, t.template, n)
     written = f"{t.written(list(t.parameters))} for {' '.join([t.constant, *t.parameters])}"
     return ShortForm(
         (encode(t.constant),),
@@ -517,7 +528,8 @@ def _translated(t: Translation, scope: Scope, path: Path, index: int) -> ShortFo
         index,
         short=t.template,
         mode=t.syntax.mode,
-        bare=_bare(t.syntax.mixfix, t.template, n),
+        bare=slots[0],
+        tight=slots[1],
         order=t.order,
     )
 
@@ -818,44 +830,72 @@ def _ambiguities(
             )
 
 
-def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
-    """Terms in ``sources`` that write out a constant with a short form, and
-    short forms ``sources`` declare with the delimiters of another."""
+@dataclass
+class _Index:
+    """The short forms of a project, ready to look up."""
+
+    checker: _Checker
+    includes: dict[str, set[str]]  # bundle -> the bundles it unbundles
+    by_first: dict[str, list[ShortForm]]  # by the first token of the pattern
+    by_delimiters: dict[tuple[str, ...], list[ShortForm]]  # mixfixes, by `_delimiters`
+    removals: dict[tuple[str, ...], list[ShortForm]]  # by pattern
+
+    def holds(self, form: ShortForm, path: Path, index: int) -> bool:
+        """Whether ``form`` holds at command ``index`` of ``path``."""
+        found = self.checker.analyses[path]
+        assert found is not None  # every checked path is analyzed
+        context = found.contexts[index]
+        bundles = _expand(context.bundles, self.includes)
+        return _holds(form, path, index, context, bundles, self.checker, self.removals)
+
+
+def _index(project: Project, paths: list[Path], allow: frozenset[str]) -> _Index:
+    """The short forms of ``project`` and the theories ``paths`` reach."""
+    checker = _Checker(project, allow)
+    universe = list(dict.fromkeys(project.closure([*paths, *project.theory_files()], None)))
+    for path in universe:
+        checker.analysis(path)
+    index = _Index(checker, {}, {}, {}, {})
+    for found in (a for a in checker.analyses.values() if a is not None):
+        for bundle, names in found.includes.items():
+            index.includes.setdefault(bundle, set()).update(names)
+        for removal in found.removals:
+            index.removals.setdefault(removal.pattern, []).append(removal)
+        for form in found.forms:
+            if (delimiters := _delimiters(form)) is not None:
+                index.by_delimiters.setdefault(delimiters, []).append(form)
+            session = project.session_of(form.path)
+            # An included theory's abbreviation may fix types the project's own
+            # terms do not have, and is no part of its vocabulary.
+            foreign = session is not None and session.external
+            if foreign and form.code == ABBREVIATION_CODE:
+                continue
+            if " ".join(form.pattern) not in allow:
+                index.by_first.setdefault(form.pattern[0], []).append(form)
+    return index
+
+
+def _by_project(sources: Iterable[SourceFile]) -> Iterator[tuple[Project, list[Path]]]:
     by_project: dict[int, tuple[Project, list[Path]]] = {}
     for source in sources:
         by_project.setdefault(id(source.project), (source.project, []))[1].append(source.path)
+    yield from by_project.values()
+
+
+def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) -> list[Finding]:
+    """Terms in ``sources`` that write out a constant with a short form, and
+    short forms ``sources`` declare with the delimiters of another."""
     findings: list[Finding] = []
-    for project, paths in by_project.values():
-        checker = _Checker(project, frozenset(allow))
-        universe = list(dict.fromkeys(project.closure([*paths, *project.theory_files()], None)))
-        for path in universe:
-            checker.analysis(path)
-        analyses = [a for a in checker.analyses.values() if a is not None]
-        includes: dict[str, set[str]] = {}
-        by_first: dict[str, list[ShortForm]] = {}
-        by_delimiters: dict[tuple[str, ...], list[ShortForm]] = {}
-        removals: dict[tuple[str, ...], list[ShortForm]] = {}
-        for found in analyses:
-            for bundle, names in found.includes.items():
-                includes.setdefault(bundle, set()).update(names)
-            for removal in found.removals:
-                removals.setdefault(removal.pattern, []).append(removal)
-            for form in found.forms:
-                if (delimiters := _delimiters(form)) is not None:
-                    by_delimiters.setdefault(delimiters, []).append(form)
-                session = project.session_of(form.path)
-                # An included theory's abbreviation may fix types the project's own
-                # terms do not have, and is no part of its vocabulary.
-                foreign = session is not None and session.external
-                if foreign and form.code == ABBREVIATION_CODE:
-                    continue
-                if " ".join(form.pattern) not in checker.allow:
-                    by_first.setdefault(form.pattern[0], []).append(form)
+    for project, paths in _by_project(sources):
+        index = _index(project, paths, frozenset(allow))
+        checker = index.checker
         for path in paths:
             found = checker.analyses[path]
             assert found is not None  # set once the import cycle guard is left
-            findings += _check(path, found, by_first, removals, includes, checker)
-            findings += _ambiguities(path, found, by_delimiters, removals, includes, checker)
+            findings += _check(path, found, index.by_first, index.removals, index.includes, checker)
+            findings += _ambiguities(
+                path, found, index.by_delimiters, index.removals, index.includes, checker
+            )
     return findings
 
 
@@ -948,6 +988,20 @@ def _rewrite(form: ShortForm, toks: list[Token], text: str, j: int, end: int) ->
     return Edit(at, toks[stop - 1].end, filled if closed else _wrap(toks, j, stop, filled))
 
 
+def _term_texts(found: _Analysis) -> Iterator[tuple[int, str, str, int]]:
+    """The terms of the theory: the index of their command, the token before
+    them, their text, and its offset."""
+    theory = found.theory
+    for index, command in enumerate(theory.commands):
+        if not found.contexts[index].terms:
+            continue
+        toks = list(significant(command.tokens(theory.tokens)))
+        for k, tok in enumerate(toks):
+            before = toks[k - 1].text if k else ""
+            if tok.kind in TEXTS and before not in _NOT_TERM_AFTER:
+                yield (index, before, *term_text(tok))
+
+
 def _check(
     path: Path,
     found: _Analysis,
@@ -961,57 +1015,355 @@ def _check(
     def holds(form: ShortForm, index: int, context: _Context, bundles: set[str]) -> bool:
         return _holds(form, path, index, context, bundles, checker, removals)
 
-    for index, command in enumerate(theory.commands):
+    for index, before, text, start in _term_texts(found):
         context = found.contexts[index]
-        if not context.terms:
-            continue
         bundles = _expand(context.bundles, includes)
-        toks = list(significant(command.tokens(theory.tokens)))
-        for k, tok in enumerate(toks):
-            if tok.kind not in TEXTS or (k and toks[k - 1].text in _NOT_TERM_AFTER):
+        # `[where f = "..."]`, `[of "..."]`: a term with no surrounding type.
+        instantiation = before in ("=", "of")
+        inner = term_tokens(text)
+        spelled = spelling(inner)
+        variables = bound_names(inner) | context.variables
+        consumed = 0
+        for j, t in enumerate(inner):
+            if j < consumed or t.kind is not Kind.WORD or t.text in variables:
                 continue
-            text, start = term_text(tok)
-            # `[where f = "..."]`, `[of "..."]`: a term with no surrounding type.
-            instantiation = k > 0 and toks[k - 1].text in ("=", "of")
-            inner = term_tokens(text)
-            spelled = spelling(inner)
-            variables = bound_names(inner) | context.variables
-            consumed = 0
-            for j, t in enumerate(inner):
-                if j < consumed or t.kind is not Kind.WORD or t.text in variables:
-                    continue
-                if _field_name(inner, j):
-                    continue
-                best: tuple[ShortForm, int] | None = None
-                for form in by_first.get(spelled[j], ()):
-                    end = match(form.pattern, form.variables, inner, spelled, j)
-                    if (
-                        end is not None
-                        and (best is None or end > best[1])
-                        and holds(form, index, context, bundles)
-                    ):
-                        best = form, end
-                if best is None:
-                    continue
-                form, consumed = best
-                if form.applied and not heads(inner, j):
-                    continue
-                if form.whole and not delimited(inner, j, consumed):
-                    continue
-                if form.overloaded and (instantiation or _passed_partially(inner, j, consumed)):
-                    continue  # the generic name could not be resolved there
-                if arguments(inner, consumed) >= form.arity:
-                    written = " ".join(text[t.start : inner[consumed - 1].end].split())
-                    edit = _rewrite(form, inner, text, j, consumed)
-                    fix = None
-                    if edit is not None:
-                        moved = Edit(start + edit.start, start + edit.end, edit.text)
-                        fix = Fix((moved,), safe=False)
-                    yield Finding.at(
-                        path,
-                        theory.lines,
-                        start + t.start,
-                        form.code,
-                        f"{written} is written out; {form.advice}",
-                        fix,
-                    )
+            if _field_name(inner, j):
+                continue
+            best: tuple[ShortForm, int] | None = None
+            for form in by_first.get(spelled[j], ()):
+                end = match(form.pattern, form.variables, inner, spelled, j)
+                if (
+                    end is not None
+                    and (best is None or end > best[1])
+                    and holds(form, index, context, bundles)
+                ):
+                    best = form, end
+            if best is None:
+                continue
+            form, consumed = best
+            if form.applied and not heads(inner, j):
+                continue
+            if form.whole and not delimited(inner, j, consumed):
+                continue
+            if form.overloaded and (instantiation or _passed_partially(inner, j, consumed)):
+                continue  # the generic name could not be resolved there
+            if arguments(inner, consumed) >= form.arity:
+                written = " ".join(text[t.start : inner[consumed - 1].end].split())
+                edit = _rewrite(form, inner, text, j, consumed)
+                fix = None
+                if edit is not None:
+                    moved = Edit(start + edit.start, start + edit.end, edit.text)
+                    fix = Fix((moved,), safe=False)
+                yield Finding.at(
+                    path,
+                    theory.lines,
+                    start + t.start,
+                    form.code,
+                    f"{written} is written out; {form.advice}",
+                    fix,
+                )
+
+
+# Rewriting the uses of a constant's former notation (`isar project renotate`).
+
+_SEPARATORS = frozenset({",", ";", "|"})
+# Pure's notations that share delimiters with a project's.
+_PURE = ("\\<lbrakk>_\\<rbrakk> \\<Longrightarrow> _", "[| _ |] ==> _")
+_Items = tuple[str | None, ...]
+
+
+@cache
+def _items(written: str) -> _Items | None:
+    """The tokens of the notation ``written``, with None for each argument
+    slot; None for a notation ``fill`` cannot write."""
+    try:
+        marked = fill(written, "", ["\0"] * len(re.findall(r"(?<!')_", written)))
+    except NotationError:
+        return None
+    items: list[str | None] = []
+    for k, piece in enumerate(marked.split("\0")):
+        items += [None] * bool(k) + spelling(term_tokens(piece))
+    return tuple(items)
+
+
+@dataclass(frozen=True)
+class _Use:
+    """Tokens ``start:end`` of a term written in a notation."""
+
+    start: int
+    end: int
+    slots: tuple[tuple[int, int], ...]  # the token range of each argument
+    delimiters: int  # how many tokens of the notation it has
+
+
+def _argument_start(toks: list[Token], spelled: list[str], end: int) -> int | None:
+    """The index of the argument that ends before ``toks[end]``."""
+    if end == 0:
+        return None
+    if spelled[end - 1] not in CLOSERS:
+        return end - 1 if atom(toks[end - 1]) else None
+    depth = 0
+    for i in range(end - 1, -1, -1):
+        depth += (spelled[i] in CLOSERS) - (spelled[i] in OPENERS)
+        if depth == 0:
+            return i
+    return None
+
+
+def _slot_end(items: _Items, k: int, spelled: list[str], i: int) -> int | None:
+    """The end of the argument in slot ``items[k]`` from ``spelled[i]``: the next
+    delimiter outside brackets and outside nested uses of the notation."""
+    close = items[k + 1]
+    opener = items[k - 1] if k else None
+    depth = nested = 0
+    for j in range(i, len(spelled)):
+        text = spelled[j]
+        if text == close and depth == nested == 0:
+            return j if j > i else None
+        if text in OPENERS:
+            depth += 1
+        elif text in CLOSERS:
+            depth -= 1
+        elif text == opener:
+            nested += 1
+        elif text == close:
+            nested -= 1
+        if depth < 0:
+            return None
+    return None
+
+
+def _uses(
+    items: _Items, toks: list[Token], spelled: list[str], strict: bool = True
+) -> Iterator[_Use]:
+    """The terms of ``toks`` written in the notation ``items``. A slot between
+    delimiters holds anything up to the next one; a slot at either end holds
+    one argument that takes part in no application. Unless ``strict``, the
+    last slot may be followed by more arguments, which it may take."""
+    first = next((k for k, item in enumerate(items) if item is not None), None)
+    if first is None or None in (items[k] for k in range(first) if k):
+        return  # no delimiter, or two slots before the first
+    for p in (p for p, text in enumerate(spelled) if text == items[first]):
+        slots: list[tuple[int, int]] = []
+        start = p
+        if first:
+            start = _argument_start(toks, spelled, p)
+            if start is None or not heads(toks, start):
+                continue
+            slots.append((start, p))
+        i, k = p, first
+        while i is not None and k < len(items):
+            item = items[k]
+            if item is not None:
+                i, k = (i + 1, k + 1) if i < len(spelled) and spelled[i] == item else (None, k)
+            elif k + 1 == len(items):
+                end = argument_end(toks, i)
+                ok = end > i and (not strict or arguments(toks, end) == 0)
+                slots.append((i, end))
+                i, k = (end if ok else None), k + 1
+            elif items[k + 1] is None:  # the next slot follows: one argument
+                end = argument_end(toks, i)
+                slots.append((i, end))
+                i, k = (end if end > i else None), k + 1
+            else:
+                end = _slot_end(items, k, spelled, i)
+                slots.append((i, end or i))
+                i, k = end, k + 1
+        if i is not None:
+            yield _Use(start, i, tuple(slots), sum(item is not None for item in items))
+
+
+@dataclass(frozen=True)
+class Renotation:
+    """The edits that rewrite uses of a former notation, by file, and the uses
+    left as written: file, line, and why."""
+
+    edits: dict[Path, list[Edit]]
+    notes: list[tuple[Path, int, str]]
+
+
+def former(mixfix: str) -> str:
+    """The notation of ``mixfix``, as given to ``--from``: an annotation as a
+    declaration writes it, with or without its parentheses, or the bare
+    notation."""
+    toks = list(significant(tokenize(mixfix)))
+    if toks and toks[0].text == "(":
+        text, notation = parse_mixfix(bracket_group(toks, 0)[0])
+    else:
+        text = mixfix.strip()
+        texts = [unquote(t) for t in toks if t.kind in (Kind.STRING, Kind.CARTOUCHE)]
+        notation = texts[0] if texts else text
+    if not notation:
+        raise NotationError(f"no notation in ({mixfix})")
+    return template(text, notation)
+
+
+def renotate(sources: Iterable[SourceFile], constant: str, old: str) -> Renotation:
+    """The edits of ``sources`` that rewrite terms written in ``constant``'s
+    former notation ``old`` (a template, as ``former`` reads it) into the
+    notation its declaration has now. Several declarations of the name (the
+    parameters of different locales) each rewrite the terms where they hold."""
+    name = encode(constant.rpartition(".")[2])
+    renotation = Renotation({}, [])
+    old_items = _items(old)
+    if not old_items or old_items == (None,):
+        raise NotationError(f'the notation "{old}" is not supported')
+    for project, paths in _by_project(sources):
+        index = _index(project, paths, frozenset())
+        named = [f for forms in index.by_delimiters.values() for f in forms if f.pattern == (name,)]
+        current = [f for f in named if _items(f.short) != old_items]
+        if not current:
+            raise NotationError(f'{constant} has no notation other than "{old}"')
+        for path in paths:
+            found = index.checker.analyses[path]
+            assert found is not None  # set once the import cycle guard is left
+            edits = list(_renotate_theory(path, found, index, named, old_items, renotation))
+            if edits:
+                renotation.edits[path] = edits
+    return renotation
+
+
+def _renotate_theory(
+    path: Path,
+    found: _Analysis,
+    index: _Index,
+    named: list[ShortForm],
+    old_items: _Items,
+    renotation: Renotation,
+) -> Iterator[Edit]:
+    syntax = [s.notation for s in found.syntax.values() if s.mode != "output"]
+    forms = [f for same in index.by_delimiters.values() for f in same]
+    held: dict[int, tuple[list[ShortForm], list[_Items]]] = {}  # by command
+    for command, _, text, start in _term_texts(found):
+        if command not in held:
+            # A declaration's own equations already use its notation.
+            here = [
+                f
+                for f in forms
+                if (f.path, f.after) == (path, command) or index.holds(f, path, command)
+            ]
+            # Another constant with the former notation makes a use ambiguous.
+            others = [f.short for f in here if f not in named or _items(f.short) != old_items]
+            written = {_items(w) for w in [*_PURE, *syntax, *others]}
+            productions = [i for i in written if i is not None]
+            mine = {f.short: f for f in named if f in here}
+            # Where a declaration of the name keeps the former notation, it is no former one.
+            stale = any(_items(short) == old_items for short in mine)
+            held[command] = [] if stale else list(mine.values()), productions
+        targets, productions = held[command]
+        if not targets:
+            continue  # the constant has no new notation here
+        toks = term_tokens(text)
+        spelled = spelling(toks)
+        uses = list(_uses(old_items, toks, spelled))
+        rivals = [u for items in productions for u in _uses(items, toks, spelled, False)]
+        new = targets[0]
+        new_items = _items(new.short)
+        assert new_items is not None  # `_delimiters` read it
+        accepted: dict[_Use, int] = {}  # a use and the end of the arguments it takes
+        for use in uses:
+            if any(
+                r.start <= use.start and r.end >= use.end and r.delimiters >= use.delimiters
+                for r in rivals
+            ):
+                continue  # another notation that is at least as long
+            line = found.theory.lines.line(start + toks[use.start].start)
+            extra = new_items.count(None) - len(use.slots)
+            if len(targets) > 1:
+                shown = ", ".join(f.short for f in targets)
+                renotation.notes.append((path, line, f"it has several notations: {shown}"))
+            elif extra > 0 and (not heads(toks, use.start) or arguments(toks, use.end) < extra):
+                renotation.notes.append((path, line, f"too few arguments for {new.short}"))
+            else:
+                end = use.end
+                for _ in range(max(extra, 0)):
+                    end = argument_end(toks, end)
+                accepted[use] = end
+        for use, end in _outermost(accepted):
+            replacement = _renotated_use(use, end, accepted, new, new_items, toks, spelled, text)
+            yield Edit(start + toks[use.start].start, start + toks[end - 1].end, replacement[0])
+
+
+def _outermost(accepted: dict[_Use, int]) -> list[tuple[_Use, int]]:
+    """The uses not inside another, in order."""
+    out: list[tuple[_Use, int]] = []
+    for use, end in sorted(accepted.items(), key=lambda item: (item[0].start, -item[1])):
+        if not out or use.start >= out[-1][1]:
+            out.append((use, end))
+    return out
+
+
+def _renotated_range(
+    a: int,
+    b: int,
+    accepted: dict[_Use, int],
+    new: ShortForm,
+    new_items: _Items,
+    toks: list[Token],
+    spelled: list[str],
+    text: str,
+) -> tuple[str, bool]:
+    """The text of ``toks[a:b]`` with the uses inside rewritten, and whether
+    it is one argument."""
+    inside = {u: e for u, e in accepted.items() if a <= u.start and e <= b}
+    if (whole := next((u for u, e in inside.items() if (u.start, e) == (a, b)), None)) is not None:
+        # The use is the whole argument: the caller brackets it if it must.
+        return _renotated_use(whole, b, accepted, new, new_items, toks, spelled, text, False)
+    out: list[str] = []
+    at = toks[a].start
+    for use, end in _outermost(inside):
+        out.append(text[at : toks[use.start].start])
+        out.append(_renotated_use(use, end, accepted, new, new_items, toks, spelled, text)[0])
+        at = toks[end - 1].end
+    return "".join(out) + text[at : toks[b - 1].end], argument_end(toks, a) == b
+
+
+def _renotated_use(
+    use: _Use,
+    end: int,
+    accepted: dict[_Use, int],
+    new: ShortForm,
+    new_items: _Items,
+    toks: list[Token],
+    spelled: list[str],
+    text: str,
+    bracket: bool = True,
+) -> tuple[str, bool]:
+    """``use`` and the arguments up to ``end`` written in the notation ``new``,
+    in brackets where the term around needs them (with ``bracket``), and
+    whether that is one argument."""
+    ranges = list(use.slots)
+    at = use.end
+    while at < end:  # the arguments the notation takes beyond the use
+        ranges.append((at, argument_end(toks, at)))
+        at = ranges[-1][1]
+    args = [
+        _renotated_range(a, b, accepted, new, new_items, toks, spelled, text) for a, b in ranges
+    ]
+    written = [arg if single else f"({arg})" for arg, single in args]
+    slots = new_items.count(None)
+    order = new.order or tuple(range(slots))
+    filled = fill(
+        new.short, "", [args[a][0] if k in new.bare else written[a] for k, a in enumerate(order)]
+    )
+    closed = new_items[0] is not None and new_items[-1] is not None
+    applied = len(args) > slots  # the notation applied to the remaining arguments
+    if applied:
+        filled = " ".join([filled if closed else f"({filled})", *written[slots:]])
+    elif closed:
+        return filled, True
+    if not bracket:
+        return filled, False
+    before = spelled[use.start - 1] if use.start else ""
+    after = spelled[end] if end < len(spelled) else ""
+    # An open end whose slot takes more than a name could swallow what is next to it.
+    left = not applied and new_items[0] is None and 0 not in new.tight
+    right = not applied and new_items[-1] is None and slots - 1 not in new.tight
+    if (
+        not heads(toks, use.start)
+        or arguments(toks, end) > 0
+        or (left and before not in {"", *OPENERS, *_SEPARATORS})
+        or (right and after not in {"", *CLOSERS, *_SEPARATORS})
+    ):
+        return f"({filled})", True
+    return filled, False

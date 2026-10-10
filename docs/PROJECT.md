@@ -172,6 +172,41 @@ build, as `project anchors` does: that of a theory no session owns, and that of
 an owner the project does not declare (`context order begin` gives HOL's
 `order`). `--prefer` chooses between rival definitions there.
 
+## Changing a mixfix
+
+```sh
+isar project renotate gamma --from '("\<lbrakk>_\<rbrakk>")' --diff   # review
+isar project renotate gamma src --from '("\<lbrakk>_\<rbrakk>")'      # rewrite in place
+isar project renotate gamma --from '("\<lbrakk>_\<rbrakk>")' --check  # exit 1 if any use is left
+```
+
+After a declaration's mixfix changes, every term in the old notation has to be
+rewritten. `renotate` takes the constant and its former mixfix (as the
+declaration had it, with or without parentheses, or the bare notation) and
+rewrites each use into the mixfix the declaration has now:
+
+- a use has the former delimiters with an argument in each slot (a slot between
+  delimiters holds anything up to the next one, a slot at either end one
+  argument), and the constant's current notation holds there;
+- a term that another notation in scope matches at least as fully is left
+  alone: `\<lbrakk>e\<rbrakk>\<^sub>e` of another constant, a `syntax` such as
+  `imp \<lbrakk> _ \<rbrakk>`, Pure's `\<lbrakk>A; B\<rbrakk> \<Longrightarrow> C`,
+  or another constant with the former notation;
+- the result is parenthesized where it is an argument or an open end could take
+  more (`C \<lbrakk>d\<rbrakk>` becomes `C (\<gamma> d)`); an argument is
+  parenthesized where its new slot needs it;
+- extra arguments the new notation needs are taken from the application
+  (`\<lbrakk>e\<rbrakk> d` to `\<lbrakk>e\<rbrakk>\<^sup>\<sharp> d`); surplus ones
+  stay applied.
+
+Terms are read as `isar check notation` reads them, so declarations, mixfix
+annotations, `notation` commands, and document text are not touched; `--exclude`
+leaves out generated theories. Parameters of different locales with one name are
+each rewritten where they hold; a use where several of them hold, or that lacks
+the arguments the new notation needs, is left as written with a note. The
+rewrite is lexical: build afterwards. Name the paths right after `CONST`: Python
+3.11 rejects paths after an option.
+
 ## Anchors in a build
 
 ```sh

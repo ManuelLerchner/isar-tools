@@ -54,20 +54,21 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 
 ## Commands
 
-| Command                                   | What it does                                                                               |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `isar fmt [PATH...]`                      | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
-| `isar check [GROUP] [PATH...]`            | Lint ROOT files and theories: proofs, notation, unused and redundant lemmas, and more      |
-| `isar stats [VIEW] [PATH...]`             | Size, proof, and command statistics                                                        |
-| `isar stats build BUILD_LOG`              | Where theory elaboration time went in an `isabelle build -v` log                           |
-| `isar project sessions\|theories\|graph`  | Sessions, theories, and the session or theory import graph; session layers                 |
-| `isar project hierarchy`                  | Class and locale declarations: parents, parameters, assumptions                            |
-| `isar project instances`                  | Class instances and locale interpretations, with their class or locale                     |
-| `isar project names`                      | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
-| `isar project extract NAME...`            | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
-| `isar project notation TOML`              | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
-| `isar project anchors --browser-info DIR` | Anchors of a built HTML presentation, HOL included, by name                                |
-| `isar symbols normalize PATH...`          | Rewrite symbols as `\<name>`, or as Unicode                                                |
+| Command                                     | What it does                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `isar fmt [PATH...]`                        | Format theories: indentation, trailing whitespace, blank lines, and optional line wrapping |
+| `isar check [GROUP] [PATH...]`              | Lint ROOT files and theories: proofs, notation, unused and redundant lemmas, and more      |
+| `isar stats [VIEW] [PATH...]`               | Size, proof, and command statistics                                                        |
+| `isar stats build BUILD_LOG`                | Where theory elaboration time went in an `isabelle build -v` log                           |
+| `isar project sessions\|theories\|graph`    | Sessions, theories, and the session or theory import graph; session layers                 |
+| `isar project hierarchy`                    | Class and locale declarations: parents, parameters, assumptions                            |
+| `isar project instances`                    | Class instances and locale interpretations, with their class or locale                     |
+| `isar project names`                        | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
+| `isar project extract NAME...`              | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
+| `isar project notation TOML`                | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
+| `isar project renotate CONST --from MIXFIX` | Rewrite terms in a constant's former mixfix into its current one                           |
+| `isar project anchors --browser-info DIR`   | Anchors of a built HTML presentation, HOL included, by name                                |
+| `isar symbols normalize PATH...`            | Rewrite symbols as `\<name>`, or as Unicode                                                |
 
 A path is a project directory, read like `isabelle build -D` (its `ROOT`, and
 `ROOTS` recursively), or a `.thy` file. Commands that read a project default to the current
