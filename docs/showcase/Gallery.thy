@@ -69,4 +69,9 @@ lemma citations: "Suc 0 = 1"
 definition inline_zero :: nat where "inline_zero = 0"
 declare inline_zero_def [code_unfold]
 
+text \<open>A second operator with the symbol of \<^const>\<open>join\<close>.\<close>
+
+definition meet :: "nat \<Rightarrow> nat \<Rightarrow> nat" (infixl "\<squnion>\<^sub>m" 70) where
+  "meet a b = min a b"
+
 end
