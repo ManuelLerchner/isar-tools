@@ -73,13 +73,23 @@ def match(
     spelled: Sequence[str],
     i: int,
     bound: dict[str, tuple[str, ...]] | None = None,
+    binders: frozenset[str] = frozenset(),
 ) -> int | None:
     """The index after the instance of ``pattern`` at ``toks[i]``, or None.
     ``spelled`` is ``spelling(toks)``; ``bound`` collects the arguments the
-    variables match."""
+    variables match. A name in ``binders`` is bound in the pattern and
+    matches any name it can be renamed to: one per binder, none occurring in
+    an argument, where the renaming would capture it."""
     bound = {} if bound is None else bound
+    renamed: dict[str, str] = {}
     for item in pattern:
-        if item in variables:
+        if item in binders:
+            if i >= len(toks) or toks[i].kind is not Kind.WORD:
+                return None
+            if renamed.setdefault(item, spelled[i]) != spelled[i]:
+                return None
+            i += 1
+        elif item in variables:
             end = argument_end(toks, i)
             if end == i:
                 return None
@@ -91,6 +101,9 @@ def match(
             i += 1
         else:
             return None
+    names = set(renamed.values())
+    if len(names) < len(renamed) or any(names & set(v) for v in bound.values()):
+        return None
     return i
 
 

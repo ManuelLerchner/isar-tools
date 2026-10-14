@@ -26,8 +26,9 @@ later term should use it:
   ``includes B``, ``including B``, or a bundle that unbundles ``B``.
 
 ``spelled-out-abbreviation``: a term that is the right-hand side of an
-``abbreviation``, its variables matching any argument, should be written as
-the abbreviation. Not followed: an alias of one token, a right-hand side that
+``abbreviation``, its variables matching any argument and the names it binds
+any names not free in those arguments, should be written as the abbreviation.
+Not followed: an alias of one token, a right-hand side that
 starts with a variable, and ``c x \\<equiv> f x``, which only narrows the type
 of ``f``. A right-hand side with an operator outside brackets matches only a
 whole term (bracketed, between separators, or the whole string), since
@@ -178,6 +179,7 @@ class ShortForm:
     after: int  # index of the command that introduces it
     home: bool = False  # holds inside that command too: a locale's own parameters
     variables: frozenset[str] = frozenset()  # pattern items that match any argument
+    binders: frozenset[str] = frozenset()  # pattern items bound in it: renamable
     code: str = CODE
     # The pattern has an operator outside brackets: a match must be a whole
     # term, or precedence may split it (`a \<and> b` in `a \<and> b \<and> c`).
@@ -453,6 +455,7 @@ def _abbreviation(theory: Theory, e: Entity, index: int, scope: Scope) -> ShortF
     parameters = [t.text for t in term_tokens(lhs) if t.kind is Kind.WORD and t.text != e.name]
     variables = frozenset(parameters)
     toks = term_tokens(rhs)
+    binders = frozenset(encode(name) for name in bound_names(toks)) - variables
     pattern = tuple(spelling(toks))
     if len(pattern) < 2 or pattern[0] in variables or list(pattern[1:]) == parameters:
         return None
@@ -465,6 +468,7 @@ def _abbreviation(theory: Theory, e: Entity, index: int, scope: Scope) -> ShortF
         e.path,
         index,
         variables=variables,
+        binders=binders,
         code=ABBREVIATION_CODE,
         whole=has_operator(toks),
         short=e.name,
@@ -1025,13 +1029,14 @@ def _check(
         variables = bound_names(inner) | context.variables
         consumed = 0
         for j, t in enumerate(inner):
-            if j < consumed or t.kind is not Kind.WORD or t.text in variables:
+            # A symbol heads no constant, but may head an abbreviation: `\<forall>x. P x`.
+            if j < consumed or t.text in variables or spelled[j] not in by_first:
                 continue
             if _field_name(inner, j):
                 continue
             best: tuple[ShortForm, int] | None = None
             for form in by_first.get(spelled[j], ()):
-                end = match(form.pattern, form.variables, inner, spelled, j)
+                end = match(form.pattern, form.variables, inner, spelled, j, binders=form.binders)
                 if (
                     end is not None
                     and (best is None or end > best[1])

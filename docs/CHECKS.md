@@ -456,8 +456,9 @@ later term should use it:
   `includes B`, `including B`, or a bundle that unbundles `B`.
 
 `spelled-out-abbreviation`: a term that is the right-hand side of an
-`abbreviation`, its variables matching any argument, should be written as
-the abbreviation. Not followed: an alias of one token, a right-hand side that
+`abbreviation`, its variables matching any argument and the names it binds
+any names not free in those arguments, should be written as the abbreviation.
+Not followed: an alias of one token, a right-hand side that
 starts with a variable, and `c x \<equiv> f x`, which only narrows the type
 of `f`. A right-hand side with an operator outside brackets matches only a
 whole term (bracketed, between separators, or the whole string), since
