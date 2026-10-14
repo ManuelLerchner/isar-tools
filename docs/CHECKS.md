@@ -14,7 +14,7 @@ A comment `(* isar-ignore *)` after code silences every finding on its line; alo
 | [`symbols`](#symbols)       | `non-ascii`                                                                                                                                                    | when named |
 | [`docs`](#docs)             | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
 | [`locales`](#locales)       | `locale-free-variable`                                                                                                                                         | when named |
-| [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`, `ambiguous-notation`                                                                                       | when named |
+| [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`, `redundant-brackets`, `ambiguous-notation`                                                                 | when named |
 | [`unused`](#unused)         | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
 | [`redundant`](#redundant)   | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
 | [`hygiene`](#hygiene)       | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
@@ -194,7 +194,7 @@ lemma abandoned: "False"
 ```
 
 ```console
-Gallery.thy:39:3: oops: oops abandons the goal
+Gallery.thy:42:3: oops: oops abandons the goal
 ```
 
 ### `unclosed-proof`
@@ -209,7 +209,7 @@ proof -
 ```
 
 ```console
-Gallery.thy:41:1: unclosed-proof: proof of lemma unclosed not finished before lemma
+Gallery.thy:44:1: unclosed-proof: proof of lemma unclosed not finished before lemma
 ```
 
 ## syntax
@@ -241,7 +241,7 @@ text
 ```
 
 ```console
-Gallery.thy:33:1: document-argument: text expects a text argument, as in text \<open>...\<close>
+Gallery.thy:36:1: document-argument: text expects a text argument, as in text \<open>...\<close>
 ```
 
 ### `theory-name`
@@ -288,7 +288,7 @@ lemma arrow: "A ⟹ A"
 ```
 
 ```console
-Gallery.thy:35:17: non-ascii: non-ASCII character '⟹' (U+27F9); write \<Longrightarrow>
+Gallery.thy:38:17: non-ascii: non-ASCII character '⟹' (U+27F9); write \<Longrightarrow>
 ```
 
 ## docs
@@ -361,7 +361,7 @@ locale unexplained =
 ```
 
 ```console
-Gallery.thy:22:1: undocumented-locale: locale unexplained is not preceded by a text block
+Gallery.thy:25:1: undocumented-locale: locale unexplained is not preceded by a text block
 ```
 
 ### `undocumented-class`
@@ -376,7 +376,7 @@ class unexplained_class =
 ```
 
 ```console
-Gallery.thy:25:1: undocumented-class: class unexplained_class is not preceded by a text block
+Gallery.thy:28:1: undocumented-class: class unexplained_class is not preceded by a text block
 ```
 
 ## locales
@@ -423,7 +423,7 @@ locale capped =
 ```
 
 ```console
-Gallery.thy:20:22: locale-free-variable: missing_limit in the header of locale capped is no parameter, bound variable, or name used elsewhere; Isabelle generalizes over it as a free variable
+Gallery.thy:23:22: locale-free-variable: missing_limit in the header of locale capped is no parameter, bound variable, or name used elsewhere; Isabelle generalizes over it as a free variable
 ```
 
 ## notation
@@ -481,6 +481,24 @@ declarations. Overloaded constants share their generic's notation and do not
 count. The notation of a parameter of a parent locale does not count either:
 an instance that renames the parameter drops its mixfix.
 
+`redundant-brackets`: brackets around one argument (`(x)`,
+`((a + b))`, `([a, b])`), or around an application `(f x y)` that no
+operator next to them binds as tightly as application (priority 999): at
+either end of the term, next to a bracket or a separator, or next to an
+operator known to take less there. Those are HOL's infixes and connectives,
+`if`, `then`, `else`, `case`, `of`, `let`, `in`, a binder's
+`.`, and the project's infixes of priority below 999. Not followed: an
+operator glued to another symbol (`\<le>\<^sub>r`), which spells another
+notation; a delimiter of any other notation of the project, which may give
+it any priority; brackets glued to a control symbol (`\<^sub>`), which
+binds only the next symbol; and brackets a notation may write itself: after
+a delimiter it follows with `(` (`TYPE('a)`), and, once any notation
+follows a slot with `(` (`fun _'(_')`), after any argument. An infix
+word of a session the check does not read, other than HOL's common ones
+(`choose`, `permutes`), looks like an argument, so the fix is unsafe.
+Brackets around an operator term (`a \<and> (b \<and> c)`) are not
+reported: that needs each operator's priority.
+
 Terms are read lexically, as for `locales`: the strings and cartouches of
 formal commands, without document text, comments, ML, syntax commands, mixfix
 annotations, and types after `::`. Names bound in the term, or fixed by
@@ -529,6 +547,21 @@ lemma sum_list: "foldr (\<squnion>\<^sub>m) [a, b] 0 = a \<squnion>\<^sub>m (b \
 Gallery.thy:13:18: spelled-out-abbreviation: foldr (\<squnion>\<^sub>m) [a, b] 0 is written out; it is the abbreviation join_all
 ```
 
+### `redundant-brackets`
+
+Brackets around an argument or an application that no operator next to them needs (heuristic).
+
+`Gallery.thy`:
+
+```isabelle
+lemma bracketed: "(length xs) \<le> length (x # xs)"
+  by simp
+```
+
+```console
+Gallery.thy:16:19: redundant-brackets: (length xs) needs no brackets
+```
+
 ### `ambiguous-notation`
 
 A short form with the delimiters and argument slots of another one in scope.
@@ -541,7 +574,7 @@ definition meet :: "nat \<Rightarrow> nat \<Rightarrow> nat" (infixl "\<squnion>
 ```
 
 ```console
-Gallery.thy:74:12: ambiguous-notation: meet has the notation _ \<squnion>\<^sub>m _ of join (Base.thy:7); terms using it are ambiguous
+Gallery.thy:77:12: ambiguous-notation: meet has the notation _ \<squnion>\<^sub>m _ of join (Base.thy:7); terms using it are ambiguous
 ```
 
 ## unused
@@ -679,7 +712,7 @@ lemma twice: "a \<squnion>\<^sub>m b = b \<squnion>\<^sub>m a"
 ```
 
 ```console
-Gallery.thy:59:7: duplicate-lemma: twice states join_comm (Tour.thy:7) again
+Gallery.thy:62:7: duplicate-lemma: twice states join_comm (Tour.thy:7) again
 ```
 
 ### `subsumed-lemma`
@@ -768,7 +801,7 @@ lemma searching: "rev [] = ([]::nat list)"
 ```
 
 ```console
-Gallery.thy:45:3: proof-search: sledgehammer searches for a proof; replace it by the proof
+Gallery.thy:48:3: proof-search: sledgehammer searches for a proof; replace it by the proof
 ```
 
 ### `counterexample-search`
@@ -785,7 +818,7 @@ lemma searching: "rev [] = ([]::nat list)"
 ```
 
 ```console
-Gallery.thy:46:3: counterexample-search: nitpick without expect: its outcome is not checked
+Gallery.thy:49:3: counterexample-search: nitpick without expect: its outcome is not checked
 ```
 
 ### `goal-reordering`
@@ -804,7 +837,7 @@ lemma reordered: "True \<and> True"
 ```
 
 ```console
-Gallery.thy:53:4: goal-reordering: defer reorders the goals; prove them in order
+Gallery.thy:56:4: goal-reordering: defer reorders the goals; prove them in order
 ```
 
 ### `backtracking`
@@ -823,7 +856,7 @@ Back takes another result of the previous method.
 ```
 
 ```console
-Gallery.thy:55:3: backtracking: back takes the next result of the previous method, which can change with it
+Gallery.thy:58:3: backtracking: back takes the next result of the previous method, which can change with it
 ```
 
 ### `diagnostic-command`
@@ -837,7 +870,7 @@ thm join_def
 ```
 
 ```console
-Gallery.thy:49:1: diagnostic-command: thm prints but proves nothing
+Gallery.thy:52:1: diagnostic-command: thm prints but proves nothing
 ```
 
 ## methods
@@ -886,7 +919,7 @@ lemma twice: "a \<squnion>\<^sub>m b = b \<squnion>\<^sub>m a"
 ```
 
 ```console
-Gallery.thy:60:26: duplicate-fact: join_def is listed twice after add:
+Gallery.thy:63:26: duplicate-fact: join_def is listed twice after add:
 ```
 
 ### `single-apply`
@@ -940,7 +973,7 @@ declare inline_zero_def [code_unfold]
 ```
 
 ```console
-Gallery.thy:70:1: inline-declare: inline_zero_def: attach attributes to the preceding definition
+Gallery.thy:73:1: inline-declare: inline_zero_def: attach attributes to the preceding definition
 ```
 
 ## retired
@@ -972,7 +1005,7 @@ lemma old: "old_rule = old_rule"
 ```
 
 ```console
-Gallery.thy:28:13: retired-identifier: old_rule is retired
+Gallery.thy:31:13: retired-identifier: old_rule is retired
 ```
 
 ## prose
@@ -1009,7 +1042,7 @@ text \<open>See \<open>no_such_lemma\<close>; a raw _ breaks the PDF.\<close>
 ```
 
 ```console
-Gallery.thy:31:24: prose-reference: no_such_lemma names no declaration of the project
+Gallery.thy:34:24: prose-reference: no_such_lemma names no declaration of the project
 ```
 
 ### `prose-underscore`
@@ -1023,7 +1056,7 @@ text \<open>See \<open>no_such_lemma\<close>; a raw _ breaks the PDF.\<close>
 ```
 
 ```console
-Gallery.thy:31:53: prose-underscore: raw _ in document prose reaches LaTeX unescaped; cite the name in a cartouche or an antiquotation
+Gallery.thy:34:53: prose-underscore: raw _ in document prose reaches LaTeX unescaped; cite the name in a cartouche or an antiquotation
 ```
 
 ## links

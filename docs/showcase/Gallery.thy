@@ -13,6 +13,9 @@ lemma join_zero: "0 \<squnion>\<^sub>m b = b \<squnion>\<^sub>m 0"
 lemma sum_list: "foldr (\<squnion>\<^sub>m) [a, b] 0 = a \<squnion>\<^sub>m (b \<squnion>\<^sub>m 0)"
   by simp
 
+lemma bracketed: "(length xs) \<le> length (x # xs)"
+  by simp
+
 text \<open>A locale whose header names a constant that does not exist.\<close>
 
 locale capped =
@@ -63,7 +66,7 @@ lemma (in ordered_join) small: "bound < 11"
   using bound_small by simp
 
 lemma citations: "Suc 0 = 1"
-  using uncited join_zero sum_list old arrow searching reordered twice
+  using uncited join_zero sum_list bracketed old arrow searching reordered twice
   by simp
 
 definition inline_zero :: nat where "inline_zero = 0"
