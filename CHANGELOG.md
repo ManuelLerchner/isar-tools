@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-10-14)
 
 - `spelled-out-abbreviation` matches a right-hand side up to the names it binds, so
   `\<forall>e \<in> A. e \<noteq> v` is the abbreviation of
