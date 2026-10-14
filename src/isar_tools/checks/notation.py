@@ -51,6 +51,24 @@ declarations. Overloaded constants share their generic's notation and do not
 count. The notation of a parameter of a parent locale does not count either:
 an instance that renames the parameter drops its mixfix.
 
+``redundant-brackets``: brackets around one argument (``(x)``,
+``((a + b))``, ``([a, b])``), or around an application ``(f x y)`` that no
+operator next to them binds as tightly as application (priority 999): at
+either end of the term, next to a bracket or a separator, or next to an
+operator known to take less there. Those are HOL's infixes and connectives,
+``if``, ``then``, ``else``, ``case``, ``of``, ``let``, ``in``, a binder's
+``.``, and the project's infixes of priority below 999. Not followed: an
+operator glued to another symbol (``\\<le>\\<^sub>r``), which spells another
+notation; a delimiter of any other notation of the project, which may give
+it any priority; brackets glued to a control symbol (``\\<^sub>``), which
+binds only the next symbol; and brackets a notation may write itself: after
+a delimiter it follows with ``(`` (``TYPE('a)``), and, once any notation
+follows a slot with ``(`` (``fun _'(_')``), after any argument. An infix
+word of a session the check does not read, other than HOL's common ones
+(``choose``, ``permutes``), looks like an argument, so the fix is unsafe.
+Brackets around an operator term (``a \\<and> (b \\<and> c)``) are not
+reported: that needs each operator's priority.
+
 Terms are read lexically, as for ``locales``: the strings and cartouches of
 formal commands, without document text, comments, ML, syntax commands, mixfix
 annotations, and types after ``::``. Names bound in the term, or fixed by
@@ -75,6 +93,7 @@ from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 
+from isar_tools.checks import brackets
 from isar_tools.checks.findings import Edit, Finding, Fix
 from isar_tools.checks.locales import bound_names, term_text
 from isar_tools.checks.terms import (
@@ -191,6 +210,7 @@ class ShortForm:
     short: str = ""
     parameters: tuple[str, ...] = ()
     mode: str = ""  # "input" for `notation (input)`
+    infix: int | None = None  # the priority of an infix
     # The `_` slots of `short` that take an argument without its brackets, and
     # those that take only a name or a bracketed term.
     bare: frozenset[int] = frozenset()
@@ -359,16 +379,18 @@ _Slots = tuple[frozenset[int], frozenset[int]]
 _NO_SLOTS: _Slots = (frozenset(), frozenset())
 
 
-def _shown(mixfix: str, notation: str) -> tuple[str, int, _Slots] | None:
-    """The notation a mixfix writes, its arity, and its bare and tight slots;
-    None if it has no notation to suggest."""
+def _shown(mixfix: str, notation: str) -> tuple[str, int, _Slots, int | None] | None:
+    """The notation a mixfix writes, its arity, its bare and tight slots, and
+    its priority if it is an infix; None if it has no notation to suggest."""
     try:
         written = template(mixfix, notation)
         infix = mixfix.partition(" ")[0] in INFIX
         # `'_` quotes the underscore: it is no slot.
         arity = 0 if infix else len(re.findall(r"(?<!')_", written))
         slots = _slots(mixfix, written, arity) if arity else _NO_SLOTS
-        return (written, arity, slots) if written else None
+        last = mixfix.split()[-1] if infix else ""
+        priority = int(last) if last.isdigit() else None
+        return (written, arity, slots, priority) if written else None
     except NotationError:
         return None
 
@@ -420,6 +442,7 @@ def _notations(args: list[Token], scope: Scope, path: Path, index: int) -> Itera
                 mode=mode,
                 bare=shown[2][0],
                 tight=shown[2][1],
+                infix=shown[3],
             )
 
 
@@ -508,6 +531,7 @@ def _declared_forms(theory: Theory, path: Path, blocks: list[Scope]) -> Iterator
             short=shown[0],
             bare=shown[2][0],
             tight=shown[2][1],
+            infix=shown[3],
         )
 
 
@@ -761,18 +785,28 @@ def _holds(
     )
 
 
+def _between_slots(notation: str) -> list[str] | None:
+    """The text of ``notation`` around and between its argument slots; None
+    for a notation ``fill`` cannot write."""
+    slots = len(re.findall(r"(?<!')_", notation))
+    try:
+        return fill(notation, "", ["\0"] * slots).split("\0")
+    except NotationError:  # a structure index
+        return None
+
+
+def _delimiter_tokens(notation: str) -> list[list[str]]:
+    return [spelling(term_tokens(piece)) for piece in _between_slots(notation) or []]
+
+
 def _delimiters(form: ShortForm) -> tuple[str, ...] | None:
     """What a parser sees of ``form``'s notation: the delimiters around and
     between its argument slots, without layout; None for a form that is no
     mixfix (an overloading, an abbreviation)."""
     if form.code != CODE or form.overloaded:
         return None
-    slots = len(re.findall(r"(?<!')_", form.short))
-    try:
-        marked = fill(form.short, "", ["\0"] * slots)
-    except NotationError:  # a structure index
-        return None
-    return tuple(encode(marked).replace(" ", "").split("\0"))
+    pieces = _between_slots(form.short)
+    return None if pieces is None else tuple(encode(p).replace(" ", "") for p in pieces)
 
 
 def _inherited(form: ShortForm, context: _Context) -> bool:
@@ -843,6 +877,7 @@ class _Index:
     by_first: dict[str, list[ShortForm]]  # by the first token of the pattern
     by_delimiters: dict[tuple[str, ...], list[ShortForm]]  # mixfixes, by `_delimiters`
     removals: dict[tuple[str, ...], list[ShortForm]]  # by pattern
+    operators: brackets.Operators = field(default_factory=brackets.Operators)
 
     def holds(self, form: ShortForm, path: Path, index: int) -> bool:
         """Whether ``form`` holds at command ``index`` of ``path``."""
@@ -860,14 +895,24 @@ def _index(project: Project, paths: list[Path], allow: frozenset[str]) -> _Index
     for path in universe:
         checker.analysis(path)
     index = _Index(checker, {}, {}, {}, {})
+    infixes: dict[str, int] = {}
+    notations: list[list[list[str]]] = []
     for found in (a for a in checker.analyses.values() if a is not None):
+        for entry in found.syntax.values():
+            notations.append(_delimiter_tokens(entry.notation))
         for bundle, names in found.includes.items():
             index.includes.setdefault(bundle, set()).update(names)
         for removal in found.removals:
             index.removals.setdefault(removal.pattern, []).append(removal)
         for form in found.forms:
-            if (delimiters := _delimiters(form)) is not None:
-                index.by_delimiters.setdefault(delimiters, []).append(form)
+            if (pieces := _delimiters(form)) is not None:
+                index.by_delimiters.setdefault(pieces, []).append(form)
+                tokens = _delimiter_tokens(form.short)
+                if form.infix is None:
+                    notations.append(tokens)
+                else:
+                    for op in tokens[1]:
+                        infixes[op] = max(form.infix, infixes.get(op, 0))
             session = project.session_of(form.path)
             # An included theory's abbreviation may fix types the project's own
             # terms do not have, and is no part of its vocabulary.
@@ -876,6 +921,7 @@ def _index(project: Project, paths: list[Path], allow: frozenset[str]) -> _Index
                 continue
             if " ".join(form.pattern) not in allow:
                 index.by_first.setdefault(form.pattern[0], []).append(form)
+    index.operators = brackets.Operators.of(infixes, notations)
     return index
 
 
@@ -900,7 +946,29 @@ def check_notation(sources: Iterable[SourceFile], *, allow: Iterable[str] = ()) 
             findings += _ambiguities(
                 path, found, index.by_delimiters, index.removals, index.includes, checker
             )
+            findings += _redundant_brackets(path, found, index.operators)
     return findings
+
+
+def _redundant_brackets(path: Path, found: _Analysis, ops: brackets.Operators) -> Iterator[Finding]:
+    theory = found.theory
+    for _, _, text, start in _term_texts(found):
+        toks = term_tokens(text)
+        for i, stop in brackets.redundant(toks, ops):
+            written = text[toks[i].start : toks[stop - 1].end]
+            edit = Edit(
+                start + toks[i].start,
+                start + toks[stop - 1].end,
+                brackets.unbracketed(toks, text, i, stop),
+            )
+            yield Finding.at(
+                path,
+                theory.lines,
+                start + toks[i].start,
+                brackets.CODE,
+                f"{' '.join(written.split())} needs no brackets",
+                Fix((edit,), safe=False),
+            )
 
 
 def _passed_partially(toks: list[Token], start: int, end: int) -> bool:

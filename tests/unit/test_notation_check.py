@@ -38,7 +38,11 @@ def found(make_project: MakeProject, body: str, *allow: str) -> list[tuple[int, 
         {"ROOT": ROOT, "Base.thy": BASE, "T.thy": f"theory T imports Base begin\n{body}\nend\n"}
     )
     findings = check_notation(collect([base / "T.thy"]), allow=allow)
-    return [(f.line, f.message.split(" is written out")[0]) for f in findings]
+    return [
+        (f.line, f.message.split(" is written out")[0])
+        for f in findings
+        if f.code != "redundant-brackets"
+    ]
 
 
 def base_findings(make_project: MakeProject) -> list[tuple[int, str]]:

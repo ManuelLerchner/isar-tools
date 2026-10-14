@@ -90,6 +90,11 @@ CODES: dict[str, tuple[str, str]] = {
         "notation",
         "a term written out where the project declared an abbreviation for it (heuristic)",
     ),
+    "redundant-brackets": (
+        "notation",
+        "brackets around an argument or an application that no operator next to them needs"
+        " (heuristic)",
+    ),
     "ambiguous-notation": (
         "notation",
         "a short form with the delimiters and argument slots of another one in scope",

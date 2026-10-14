@@ -7,6 +7,10 @@
   `\<forall>d \<in> A. d \<noteq> v`, unless the renaming would capture a name of an
   argument. Right-hand sides that start with a symbol, such as `\<forall>` or
   `\<not>`, are matched too.
+- `isar check notation` reports `redundant-brackets`: brackets around one argument, or
+  around an application next to which only term ends, brackets, separators, or operators
+  of lower priority stand, as in `(f x) \<subseteq> A`. Project notations that use a
+  token as a delimiter keep the brackets next to it. The fix is unsafe.
 
 ## 0.9.0 (2026-10-10)
 
