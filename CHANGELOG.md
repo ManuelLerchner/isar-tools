@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `spelled-out-abbreviation` matches a right-hand side up to the names it binds, so
+  `\<forall>e \<in> A. e \<noteq> v` is the abbreviation of
+  `\<forall>d \<in> A. d \<noteq> v`, unless the renaming would capture a name of an
+  argument. Right-hand sides that start with a symbol, such as `\<forall>` or
+  `\<not>`, are matched too.
+
 ## 0.9.0 (2026-10-10)
 
 - `spelled-out-notation` follows `no_notation` and `no_adhoc_overloading`: a short

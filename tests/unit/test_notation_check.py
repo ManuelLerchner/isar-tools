@@ -245,6 +245,43 @@ end
     ]
 
 
+def test_abbreviation_binders(make_project: MakeProject) -> None:
+    base = make_project(
+        {
+            "ROOT": "session S = HOL + theories T\n",
+            "T.thy": r"""theory T imports Main begin
+definition pts :: "nat \<Rightarrow> nat list" where "pts r = [r]"
+abbreviation safe where "safe r v \<equiv> \<forall>d \<in> set (pts r). d \<noteq> v"
+abbreviation all_ne where "all_ne r v \<equiv> list_all (\<lambda>d. d \<noteq> v) (pts r)"
+abbreviation neg where "neg r v \<equiv> \<not> pts r = [v]"
+abbreviation apart where
+  "apart r \<equiv> \<forall>x \<in> set (pts r). \<forall>y \<in> set (pts r). x \<noteq> y"
+lemma "\<forall>e \<in> set (pts a). e \<noteq> b"
+  "(\<forall>d\<in>set (pts (f a)). d \<noteq> b) \<Longrightarrow> P"
+lemma "list_all (\<lambda>e. e \<noteq> b) (pts a)" "\<not> pts a = [b]"
+lemma "\<forall>b \<in> set (pts a). b \<noteq> b" "list_all (\<lambda>e. e \<noteq> e) (pts a)"
+lemma "\<forall>e \<in> set (pts a). e \<noteq> b \<and> P"
+  "\<forall>e \<in> set (pts a). d \<noteq> b"
+lemma "list_all (\<lambda>(e, f). e \<noteq> b) (pts a)"
+lemma "\<forall>p \<in> set (pts a). \<forall>q \<in> set (pts a). p \<noteq> q"
+lemma "\<forall>p \<in> set (pts a). \<forall>p \<in> set (pts a). p \<noteq> p"
+end
+""",
+        }
+    )
+    findings = check_notation(collect([base / "T.thy"]))
+    got = [(f.line, f.message.split("; ")[1]) for f in findings]
+    assert got == [
+        (8, "it is the abbreviation safe"),
+        (9, "it is the abbreviation safe"),
+        (10, "it is the abbreviation all_ne"),
+        (10, "it is the abbreviation neg"),
+        (15, "it is the abbreviation apart"),
+    ]
+    fixes = [f.fix.edits[0].text for f in findings if f.fix]
+    assert fixes == ["safe a b", "safe (f a) b", "all_ne a b", "neg a b", "apart a"]
+
+
 def test_included_abbreviations(make_project: MakeProject) -> None:
     # An included session's abbreviation is no part of the project's vocabulary.
     base = make_project(
