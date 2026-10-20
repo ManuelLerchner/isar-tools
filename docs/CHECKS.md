@@ -10,6 +10,7 @@ A comment `(* isar-ignore *)` after code silences every finding on its line; alo
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | [`project`](#project)       | `root-syntax`, `duplicate-session`, `missing-theory`, `missing-directory`, `theory-path`, `missing-document-file`, `duplicate-theory-name`, `unreached-theory` | by default |
 | [`proofs`](#proofs)         | `unfinished-proof`, `oops`, `unclosed-proof`                                                                                                                   | by default |
+| [`soundness`](#soundness)   | `axiomatization`, `oracle`, `smt-oracle`, `quick-and-dirty`                                                                                                    | when named |
 | [`syntax`](#syntax)         | `lexical-error`, `document-argument`, `theory-name`, `invalid-utf8`                                                                                            | by default |
 | [`symbols`](#symbols)       | `non-ascii`                                                                                                                                                    | when named |
 | [`docs`](#docs)             | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
@@ -75,7 +76,7 @@ A theories entry names no existing theory.
 ```
 
 ```console
-ROOT:14:5: missing-theory: no Missing.thy on the search path of session Showcase
+ROOT:15:5: missing-theory: no Missing.thy on the search path of session Showcase
 ```
 
 ### `missing-directory`
@@ -112,7 +113,7 @@ A theories entry is a path, which Isabelle does not load.
 ```
 
 ```console
-ROOT:15:5: theory-path: theories entry sub/Path is a path, which Isabelle does not load; put the directory on the search path (directories "sub") and list Path
+ROOT:16:5: theory-path: theories entry sub/Path is a path, which Isabelle does not load; put the directory on the search path (directories "sub") and list Path
 ```
 
 ### `missing-document-file`
@@ -129,7 +130,7 @@ A document_files entry names no file.
 ```
 
 ```console
-ROOT:16:18: missing-document-file: no document file document/absent.tex for session Showcase
+ROOT:17:18: missing-document-file: no document file document/absent.tex for session Showcase
 ```
 
 ### `duplicate-theory-name`
@@ -210,6 +211,81 @@ proof -
 
 ```console
 Gallery.thy:44:1: unclosed-proof: proof of lemma unclosed not finished before lemma
+```
+
+## soundness
+
+Axioms, oracles, and options that trust results without a proof.
+
+A theory that builds can still prove `False`: an axiom, an oracle, or a
+configuration that trusts an external answer passes the kernel without
+being checked.
+
+- `axiomatization`: `axiomatization ... where` and `bnf_axiomatization`
+  assert their statements. An `axiomatization` without `where` only
+  declares constants and passes;
+- `oracle`: an oracle makes theorems from whatever its ML code returns;
+- `smt-oracle`: `[[smt_oracle]]` takes the SMT solver's verdict instead
+  of reconstructing its proof;
+- `quick-and-dirty`: `[[quick_and_dirty]]` lets `sorry` pass in a build.
+
+A configuration set to `false` passes. A theory that sets up a new logic
+axiomatizes on purpose: keep its axioms with `(* isar-ignore: axiomatization *)`.
+
+### `axiomatization`
+
+An axiom no proof checks.
+
+`Trust.thy`:
+
+```isabelle
+axiomatization bound :: nat where bound_pos: "bound > 0"
+```
+
+```console
+Trust.thy:7:1: axiomatization: axiomatization asserts 1 axiom no proof checks
+```
+
+### `oracle`
+
+An oracle, which makes theorems without a proof.
+
+`Trust.thy`:
+
+```isabelle
+oracle trust_me = \<open>fn ct => ct\<close>
+```
+
+```console
+Trust.thy:9:1: oracle: oracle trust_me makes theorems without a proof
+```
+
+### `smt-oracle`
+
+The smt_oracle option, which trusts the SMT solver without a proof.
+
+`Trust.thy`:
+
+```isabelle
+declare [[smt_oracle, quick_and_dirty]]
+```
+
+```console
+Trust.thy:11:11: smt-oracle: smt_oracle takes the SMT solver's verdict without a proof
+```
+
+### `quick-and-dirty`
+
+The quick_and_dirty option, which lets sorry pass in a build.
+
+`Trust.thy`:
+
+```isabelle
+declare [[smt_oracle, quick_and_dirty]]
+```
+
+```console
+Trust.thy:11:23: quick-and-dirty: quick_and_dirty lets sorry pass in a build
 ```
 
 ## syntax

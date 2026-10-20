@@ -4,6 +4,10 @@
 
 - The CLI is also installed as `isar-tools`, so `pixi exec isar-tools` and
   `uvx isar-tools` find it without `--spec` or `--from`.
+- `isar check soundness` reports what a theory trusts without a proof:
+  `axiomatization ... where` and `bnf_axiomatization` (`axiomatization`), `oracle`
+  (`oracle`), and `[[smt_oracle]]` and `[[quick_and_dirty]]` not set to `false`
+  (`smt-oracle`, `quick-and-dirty`).
 
 ## 0.10.0 (2026-10-14)
 

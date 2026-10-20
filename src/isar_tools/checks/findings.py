@@ -69,6 +69,16 @@ CODES: dict[str, tuple[str, str]] = {
     "unfinished-proof": ("proofs", "sorry or \\<proof> leaves a goal unproved"),
     "oops": ("proofs", "oops abandons a goal"),
     "unclosed-proof": ("proofs", "a proof does not end before the next theory command"),
+    "axiomatization": ("soundness", "an axiom no proof checks"),
+    "oracle": ("soundness", "an oracle, which makes theorems without a proof"),
+    "smt-oracle": (
+        "soundness",
+        "the smt_oracle option, which trusts the SMT solver without a proof",
+    ),
+    "quick-and-dirty": (
+        "soundness",
+        "the quick_and_dirty option, which lets sorry pass in a build",
+    ),
     "lexical-error": ("syntax", "an unterminated comment, string, cartouche, or verbatim"),
     "document-argument": ("syntax", "a document command without exactly one text argument"),
     "theory-name": ("syntax", "the header names a theory other than the file, or a qualified one"),
@@ -132,6 +142,7 @@ CODES: dict[str, tuple[str, str]] = {
 GROUPS = (
     "project",
     "proofs",
+    "soundness",
     "syntax",
     "symbols",
     "docs",
