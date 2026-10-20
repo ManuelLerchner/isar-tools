@@ -16,6 +16,7 @@ from isar_tools.checks.links import Pages
 from isar_tools.checks.notation import former, renotate
 from isar_tools.config import add_exclude_option
 from isar_tools.project.anchors import Anchor, Index, read_anchors
+from isar_tools.project.enclosing import enclosing
 from isar_tools.project.hierarchy import Located, as_json, closure, declarations, extends
 from isar_tools.project.model import Project, Session
 from isar_tools.project.names import (
@@ -46,7 +47,7 @@ from isar_tools.project.notation import (
 from isar_tools.project.references import References, walk
 from isar_tools.project.workspace import InputError, add_include_option, load, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
-from isar_tools.source.files import read_source, write_source
+from isar_tools.source.files import read_lenient, read_source, write_source
 from isar_tools.source.symbols import decode
 from isar_tools.source.theory import Theory, parse_theory, significant
 from isar_tools.style import Style, add_color_option, write_diff
@@ -222,6 +223,17 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
         view.add_argument("--format", choices=sorted(RENDERERS), default="text")
         add_include_option(view)
         view.set_defaults(func=run_references)
+    enclosing_view = views.add_parser(
+        "enclosing",
+        help="the declaration and proof steps that hold a line",
+        description="The declaration that holds line LINE of FILE and, inside its proof, "
+        "the goals (have, show, subgoal, ...), cases, and { } blocks that hold it, "
+        "outermost first, with their lines. Exit 1 if no declaration holds the line.",
+    )
+    enclosing_view.add_argument("location", metavar="FILE:LINE")
+    enclosing_view.add_argument("--format", choices=sorted(RENDERERS), default="text")
+    add_include_option(enclosing_view)
+    enclosing_view.set_defaults(func=run_enclosing)
     notation = views.add_parser(
         "notation",
         help="the symbols declarations introduce, as JSON",
@@ -952,6 +964,41 @@ def run_references(args: argparse.Namespace) -> int:
     ]
     title = f"{args.view.capitalize()} of {result.entity.qualified}"
     RENDERERS[args.format]([Table(args.view, title, columns, rows)], sys.stdout)
+    return 0
+
+
+def run_enclosing(args: argparse.Namespace) -> int:
+    file, _, number = str(args.location).rpartition(":")
+    if not file or not number.isdigit() or int(number) < 1:
+        raise InputError(f"{args.location}: expected FILE:LINE")
+    path = Path(file)
+    if path.suffix != ".thy" or not path.is_file():
+        raise InputError(f"{file}: not a .thy file")
+    project = Project.load(project_root(path), args.include)
+    theory = parse_theory(read_lenient(path), project.keywords_for(path))
+    spans = enclosing(theory, path.resolve(), int(number))
+    if not spans:
+        print(f"isar project enclosing: {args.location}: no declaration", file=sys.stderr)
+        return 1
+    rows: list[dict[str, Cell]] = [
+        {
+            "depth": depth,
+            "command": s.command,
+            "text": s.text,
+            "line": theory.lines.line(s.start),
+            "end_line": theory.lines.line(s.end - 1),
+        }
+        for depth, s in enumerate(spans, 1)
+    ]
+    columns = [
+        Column("depth", "depth", True),
+        Column("command", "command"),
+        Column("text", "text"),
+        Column("line", "line", True),
+        Column("end_line", "end", True),
+    ]
+    title = f"Enclosing {display_path(path)}:{number}"
+    RENDERERS[args.format]([Table("enclosing", title, columns, rows)], sys.stdout)
     return 0
 
 

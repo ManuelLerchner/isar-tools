@@ -105,6 +105,25 @@ unused`, the graph misses what a method finds by itself, such as `[simp]`
 rules, and the facts of an interpretation (`q.fact`). Before changing a lemma,
 `callers -r` lists what may break.
 
+## Locating a line
+
+```sh
+isar project enclosing src/Domain/Backward_Domain.thy:285
+```
+
+```text
+depth  command  text                                            line  end
+    1  lemma    Backward_Domain.sound_refinement.afilter_sound   272  306
+    2  case     (Plus e1 e2)                                     280  287
+    3  show     ?case                                            284  287
+```
+
+The declaration that holds the line, then the goals (`have`, `show`, `obtain`,
+`subgoal`, ...), cases, and `{ }` blocks of its proof that hold it, outermost
+first. A goal is shown by its name or the start of its statement. This turns
+the position of an `isabelle build` error into a name for `extract` or
+`callers`. Exit 1 if no declaration holds the line.
+
 ## Notation
 
 ```sh
