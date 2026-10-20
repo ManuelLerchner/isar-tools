@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from isar_tools.project.names import entities
-from isar_tools.source.keywords import PROOF_GOALS, PROOF_TERMINATORS, THEORY_GOALS, CommandKind
-from isar_tools.source.theory import Theory, goal_name
+from isar_tools.source.keywords import THEORY_GOALS
+from isar_tools.source.theory import Theory, goal_name, proof_steps
 
 # The text of a span is cut to this many characters.
 _WIDTH = 60
@@ -64,22 +64,16 @@ def proof_spans(theory: Theory, statement: int, stop: int) -> list[Span]:
         if frame.command != statement:
             spans.append(_span(theory, frame.command, last))
 
-    for i in range(statement + 1, stop):
-        command = theory.commands[i]
-        if command.kind in PROOF_GOALS or command.kind is CommandKind.PRF_OPEN:
+    for step, i in proof_steps(theory.commands, statement, stop):
+        if step == "open":
             stack.append(_Frame(i))
-        elif command.kind in PROOF_TERMINATORS or command.kind is CommandKind.PRF_CLOSE:
+        elif step == "close":
             close(i, i - 1)
-        elif command.kind is CommandKind.QED_GLOBAL:
-            while stack:
-                close(i, i - 1)
-        elif command.kind is CommandKind.NEXT_BLOCK:
+        elif step == "next":
             close_case(stack[-1], i - 1)
-        elif command.name == "case":
+        elif theory.commands[i].name == "case":
             close_case(stack[-1], i - 1)
             stack[-1].case = i
-        if not stack:
-            break
     while stack:  # an unfinished proof
         close(stop - 1, stop - 1)
     return sorted(spans, key=lambda s: (s.start, -s.end))

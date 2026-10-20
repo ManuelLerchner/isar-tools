@@ -15,6 +15,15 @@ manifest: ``--allow NAME`` (or ``check.allow``) or an ``isar-ignore`` comment
 keeps one. A session whose lemmas are all results, such as a session of
 examples, is named by ``--leaf-session NAME`` (or ``check.leaf-sessions``):
 its lemmas are not reported, its imports and assumptions are.
+
+``unused-local``: a fact a proof names (``have h:``, ``obtain x where h:``,
+``assume h:``, ``define x where h:``, ``note h = ...``) that no later text of
+its context cites. The context ends at ``next``, at the end of the enclosing
+proof or ``{ }`` block, or where the name is bound again. A fact the next
+command chains (``then``, ``hence``, ``moreover``, ``this``, ...) is used
+without its name and is not reported, and neither are the facts of ``show``
+and ``thus``, which close the goal. A step can be needed without its name, by
+``by fact`` or a backquoted statement: drop the name, or the step, and build.
 """
 
 import re
@@ -23,6 +32,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from isar_tools.checks.findings import Edit, Finding, Fix
+from isar_tools.checks.locals import check_unused_locals
 from isar_tools.project.hierarchy import bracket_group
 from isar_tools.project.model import Project
 from isar_tools.project.names import Entity, entities
@@ -270,6 +280,7 @@ def check_unused(
             if session is None or session.name not in leaf_sessions:
                 findings += _unused_facts(path, theory, cited, allowed)
             findings += _unused_assumptions(path, theory, cited, allowed)
+            findings += check_unused_locals(path, theory, allowed)
             findings += _unused_imports(path, theory, index)
     return findings
 
