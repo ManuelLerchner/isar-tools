@@ -90,6 +90,15 @@ qed"""
     assert found(body) == []
 
 
+def test_cited_in_nested_method_text() -> None:
+    body = """lemma "P"
+proof -
+  obtain c where rep: "c = 1" and 2: "True" by simp
+  show ?thesis by (use 2 in \\<open>simp add: rep\\<close>)
+qed"""
+    assert found(body) == []
+
+
 def test_have_with_premises() -> None:
     body = """lemma "P"
 proof -
