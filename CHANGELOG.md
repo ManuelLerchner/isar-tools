@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `unused-local` no longer reports a fact whose name is bound again by a step that
+  cites it, as in `have h: ... using h` or `note h = h[symmetric]`.
+
 ## 0.11.0 (2026-10-20)
 
 - The CLI is also installed as `isar-tools`, so `pixi exec isar-tools` and
