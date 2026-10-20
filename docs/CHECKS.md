@@ -16,7 +16,7 @@ A comment `(* isar-ignore *)` after code silences every finding on its line; alo
 | [`docs`](#docs)             | `undocumented-theory`, `undocumented-heading`, `undocumented-locale`, `undocumented-class`                                                                     | when named |
 | [`locales`](#locales)       | `locale-free-variable`                                                                                                                                         | when named |
 | [`notation`](#notation)     | `spelled-out-notation`, `spelled-out-abbreviation`, `redundant-brackets`, `ambiguous-notation`                                                                 | when named |
-| [`unused`](#unused)         | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`                                                                                       | when named |
+| [`unused`](#unused)         | `unused-lemma`, `redundant-import`, `unused-import`, `unused-assumption`, `unused-local`                                                                       | when named |
 | [`redundant`](#redundant)   | `duplicate-lemma`, `subsumed-lemma`                                                                                                                            | when named |
 | [`hygiene`](#hygiene)       | `tab`, `carriage-return`, `bidi-control`, `reserved-file-name`                                                                                                 | when named |
 | [`leftovers`](#leftovers)   | `proof-search`, `counterexample-search`, `goal-reordering`, `backtracking`, `diagnostic-command`                                                               | when named |
@@ -650,7 +650,7 @@ definition meet :: "nat \<Rightarrow> nat \<Rightarrow> nat" (infixl "\<squnion>
 ```
 
 ```console
-Gallery.thy:77:12: ambiguous-notation: meet has the notation _ \<squnion>\<^sub>m _ of join (Base.thy:7); terms using it are ambiguous
+Gallery.thy:84:12: ambiguous-notation: meet has the notation _ \<squnion>\<^sub>m _ of join (Base.thy:7); terms using it are ambiguous
 ```
 
 ## unused
@@ -672,6 +672,15 @@ manifest: `--allow NAME` (or `check.allow`) or an `isar-ignore` comment
 keeps one. A session whose lemmas are all results, such as a session of
 examples, is named by `--leaf-session NAME` (or `check.leaf-sessions`):
 its lemmas are not reported, its imports and assumptions are.
+
+`unused-local`: a fact a proof names (`have h:`, `obtain x where h:`,
+`assume h:`, `define x where h:`, `note h = ...`) that no later text of
+its context cites. The context ends at `next`, at the end of the enclosing
+proof or `{ }` block, or where the name is bound again. A fact the next
+command chains (`then`, `hence`, `moreover`, `this`, ...) is used
+without its name and is not reported, and neither are the facts of `show`
+and `thus`, which close the goal. A step can be needed without its name, by
+`by fact` or a backquoted statement: drop the name, or the step, and build.
 
 ### `unused-lemma`
 
@@ -736,6 +745,25 @@ begin
 
 ```console
 Base.thy:19:9: unused-assumption: assumption bound_even of locale ordered_join is cited nowhere; the locale may assume less
+```
+
+### `unused-local`
+
+A fact a proof names (have h:, note h = ...) that nothing after it cites (heuristic).
+
+`Gallery.thy`:
+
+```isabelle
+lemma detour: "(2::nat) > 0"
+proof -
+  have one: "(1::nat) > 0" by simp
+  have two: "(2::nat) > 1" by simp
+  show ?thesis using two by simp
+qed
+```
+
+```console
+Gallery.thy:70:8: unused-local: have one is cited nowhere in its proof
 ```
 
 ## redundant
@@ -1049,7 +1077,7 @@ declare inline_zero_def [code_unfold]
 ```
 
 ```console
-Gallery.thy:73:1: inline-declare: inline_zero_def: attach attributes to the preceding definition
+Gallery.thy:80:1: inline-declare: inline_zero_def: attach attributes to the preceding definition
 ```
 
 ## retired

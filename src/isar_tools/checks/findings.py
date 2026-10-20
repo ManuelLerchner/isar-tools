@@ -116,6 +116,10 @@ CODES: dict[str, tuple[str, str]] = {
         "unused",
         "a named locale or class assumption no proof cites (heuristic)",
     ),
+    "unused-local": (
+        "unused",
+        "a fact a proof names (have h:, note h = ...) that nothing after it cites (heuristic)",
+    ),
     "duplicate-lemma": ("redundant", "a lemma stating another lemma again (heuristic)"),
     "subsumed-lemma": ("redundant", "a lemma that is an instance of another one (heuristic)"),
     "tab": ("hygiene", "a tab character"),

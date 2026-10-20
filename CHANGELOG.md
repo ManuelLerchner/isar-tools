@@ -13,6 +13,9 @@
   transitively with the distance.
 - `isar project enclosing FILE:LINE` names the declaration that holds a line, and the
   goals, cases, and `{ }` blocks of its proof around it.
+- `isar check unused` reports `unused-local`: a fact a proof names (`have h:`,
+  `obtain x where h:`, `assume h:`, `note h = ...`) that nothing after it in its
+  context cites. Facts the next command chains (`then`, `moreover`, `this`) pass.
 
 ## 0.10.0 (2026-10-14)
 

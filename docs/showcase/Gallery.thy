@@ -65,8 +65,15 @@ lemma twice: "a \<squnion>\<^sub>m b = b \<squnion>\<^sub>m a"
 lemma (in ordered_join) small: "bound < 11"
   using bound_small by simp
 
+lemma detour: "(2::nat) > 0"
+proof -
+  have one: "(1::nat) > 0" by simp
+  have two: "(2::nat) > 1" by simp
+  show ?thesis using two by simp
+qed
+
 lemma citations: "Suc 0 = 1"
-  using uncited join_zero sum_list bracketed old arrow searching reordered twice
+  using uncited join_zero sum_list bracketed old arrow searching reordered twice detour
   by simp
 
 definition inline_zero :: nat where "inline_zero = 0"

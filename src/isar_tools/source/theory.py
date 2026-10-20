@@ -361,6 +361,34 @@ def _goal_blocks(commands: list[Command]) -> Iterator[GoalBlock]:
         i = j
 
 
+def proof_steps(commands: list[Command], statement: int, stop: int) -> Iterator[tuple[str, int]]:
+    """The structure of the proof of the theory-level goal ``commands[statement]``,
+    whose proof ends before ``commands[stop]``, as ``(step, index)``: ``open``
+    for a goal or ``{`` that opens a context, ``close`` for the command that
+    closes the innermost one (once per context for ``oops``), ``next``, and
+    ``other``. It ends with the ``close`` of the statement's own proof, or at
+    ``stop`` if the proof is unfinished."""
+    depth = 1
+    for i in range(statement + 1, stop):
+        kind = commands[i].kind
+        if kind in PROOF_GOALS or kind is CommandKind.PRF_OPEN:
+            depth += 1
+            yield "open", i
+        elif kind in PROOF_TERMINATORS or kind is CommandKind.PRF_CLOSE:
+            depth -= 1
+            yield "close", i
+        elif kind is CommandKind.QED_GLOBAL:
+            for _ in range(depth):
+                yield "close", i
+            depth = 0
+        elif kind is CommandKind.NEXT_BLOCK:
+            yield "next", i
+        else:
+            yield "other", i
+        if depth == 0:
+            return
+
+
 # Theory-level kinds that may also occur inside a proof.
 _IN_PROOF = (CommandKind.DOCUMENT_BODY, CommandKind.DOCUMENT_HEADING, CommandKind.DOCUMENT_RAW)
 
