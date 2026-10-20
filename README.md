@@ -66,6 +66,7 @@ Python 3.11 or newer; no runtime dependencies. In a pixi project:
 | `isar project names`                        | Named declarations: qualified name, kind, location, docstring; a Markdown index            |
 | `isar project extract NAME...`              | The source of a declaration by name; keeps quoted declarations in sync with a manifest     |
 | `isar project callers\|callees NAME`        | The declarations that cite NAME, or that NAME cites; with `-r`, transitively               |
+| `isar project enclosing FILE:LINE`          | The declaration, and the goals and cases of its proof, that hold a line                    |
 | `isar project notation TOML`                | The symbols declarations introduce, from their mixfix; keeps a notation table in sync      |
 | `isar project renotate CONST --from MIXFIX` | Rewrite terms in a constant's former mixfix into its current one                           |
 | `isar project anchors --browser-info DIR`   | Anchors of a built HTML presentation, HOL included, by name                                |
