@@ -17,6 +17,7 @@ from isar_tools.checks.project import check_project
 from isar_tools.checks.prose import check_prose
 from isar_tools.checks.redundant import check_redundant
 from isar_tools.checks.retired import check_retired, read_retired
+from isar_tools.checks.soundness import check_soundness
 from isar_tools.checks.sources import (
     check_hygiene,
     check_leftovers,
@@ -199,6 +200,7 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
     parsed: dict[Path, Theory] = {}
     if groups & {
         "proofs",
+        "soundness",
         "syntax",
         "symbols",
         "docs",
@@ -211,6 +213,8 @@ def collect_findings(args: argparse.Namespace) -> list[Finding]:
             theory = parsed[source.path] = source.parse()
             if "proofs" in groups:
                 findings += check_proofs(source.path, theory)
+            if "soundness" in groups:
+                findings += check_soundness(source.path, theory)
             if "syntax" in groups:
                 findings += check_syntax(source.path, theory)
                 findings += check_theory_name(source.path, theory)
@@ -273,6 +277,7 @@ def findings_table(findings: list[Finding]) -> Table:
 _GROUP_COLORS = {
     "project": "magenta",
     "proofs": "yellow",
+    "soundness": "red",
     "syntax": "red",
     "symbols": "cyan",
     "docs": "green",

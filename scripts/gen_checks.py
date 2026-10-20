@@ -42,6 +42,7 @@ EXEMPT = {
 SUMMARIES = {
     "project": "ROOT files and the theories their sessions build.",
     "proofs": "Proofs that do not finish.",
+    "soundness": "Axioms, oracles, and options that trust results without a proof.",
     "syntax": "Theories Isabelle cannot load.",
     "symbols": "Characters outside ASCII.",
     "docs": "Theories, headings, locales, and classes without a text block.",
@@ -64,6 +65,7 @@ MODULES = {
     "notation": "notation",
     "unused": "unused",
     "redundant": "redundant",
+    "soundness": "soundness",
     "methods": "methods",
     "attributes": "attributes",
     "retired": "retired",
