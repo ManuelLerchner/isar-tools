@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 (2026-10-20)
 
 - The CLI is also installed as `isar-tools`, so `pixi exec isar-tools` and
   `uvx isar-tools` find it without `--spec` or `--from`.
