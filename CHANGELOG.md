@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The CLI is also installed as `isar-tools`, so `pixi exec isar-tools` and
+  `uvx isar-tools` find it without `--spec` or `--from`.
+
 ## 0.10.0 (2026-10-14)
 
 - `spelled-out-abbreviation` matches a right-hand side up to the names it binds, so

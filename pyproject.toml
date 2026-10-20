@@ -37,6 +37,8 @@ Issues = "https://github.com/ManuelLerchner/isar-tools/issues"
 
 [project.scripts]
 isar = "isar_tools.cli:main"
+# Matches the package name so `pixi exec isar-tools` / `uvx isar-tools` work without `--spec`.
+isar-tools = "isar_tools.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/isar_tools"]
