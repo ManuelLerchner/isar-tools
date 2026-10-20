@@ -89,12 +89,13 @@ def check_unused_locals(path: Path, theory: Theory, allowed: frozenset[str]) -> 
             cited.setdefault(tok.text, []).append(tok.start)
     findings: list[Finding] = []
 
-    def settle(binding: _Binding, end: int) -> None:
-        """Report ``binding`` if no use of its name lies before ``end``."""
+    def settle(binding: _Binding, end: int, rebinding: int = -1) -> None:
+        """Report ``binding`` if no use of its name lies before ``end``, other
+        than the token at ``rebinding`` that binds the name again."""
         name = unquote(binding.token)
         offsets = cited.get(name, [])
-        k = bisect_left(offsets, binding.after)
-        if name in allowed or binding.anonymous or (k < len(offsets) and offsets[k] < end):
+        uses = offsets[bisect_left(offsets, binding.after) : bisect_left(offsets, end)]
+        if name in allowed or binding.anonymous or any(o != rebinding for o in uses):
             return
         message = f"{binding.command} {name} is cited nowhere in its proof"
         findings.append(
@@ -103,8 +104,10 @@ def check_unused_locals(path: Path, theory: Theory, allowed: frozenset[str]) -> 
 
     def bind(frame: _Frame, binding: _Binding) -> None:
         name = unquote(binding.token)
-        if name in frame.bindings:  # rebound: the old fact goes out of reach
-            settle(frame.bindings[name], binding.token.start)
+        # Rebound: the old fact stays in reach until the new one is bound, so
+        # `have h: ... using h` and `note h = h[symmetric]` cite the old one.
+        if name in frame.bindings:
+            settle(frame.bindings[name], binding.after, binding.token.start)
         frame.bindings[name] = binding
 
     def leave(frame: _Frame, end: int) -> None:

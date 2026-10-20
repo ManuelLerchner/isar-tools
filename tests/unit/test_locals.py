@@ -78,6 +78,18 @@ qed"""
     ]
 
 
+def test_rebound_by_its_own_proof() -> None:
+    body = """lemma "P"
+proof -
+  have h: "A" by simp
+  have h: "B" using h by simp
+  note n = refl
+  note n = n[symmetric]
+  show ?thesis using h n by simp
+qed"""
+    assert found(body) == []
+
+
 def test_have_with_premises() -> None:
     body = """lemma "P"
 proof -
