@@ -43,6 +43,7 @@ from isar_tools.project.notation import (
     translation,
     translation_rules,
 )
+from isar_tools.project.references import References, walk
 from isar_tools.project.workspace import InputError, add_include_option, load, project_root
 from isar_tools.render import RENDERERS, Cell, Column, Table, display_path
 from isar_tools.source.files import read_source, write_source
@@ -197,6 +198,30 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     add_include_option(extract)
     add_color_option(extract)
     extract.set_defaults(func=run_extract)
+    for view_name, summary in (
+        ("callers", "the declarations that cite a declaration"),
+        ("callees", "the declarations a declaration cites"),
+    ):
+        view = views.add_parser(
+            view_name,
+            help=summary,
+            description=f"List {summary.removeprefix('the ')}, read from the sources: NAME "
+            "as for extract, and a citation of a fact it derives (f_def, f.simps) as one of "
+            "it. A citation is a name in the text of a declaration whose theory imports the "
+            "cited one; a [simp] rule a method finds, or a fact an interpretation makes, is "
+            "none. With --transitive, also what those cite or are cited by, with the "
+            "distance.",
+        )
+        view.add_argument("name", metavar="NAME")
+        view.add_argument(
+            "--project", type=Path, default=Path(), metavar="DIR", help="project directory"
+        )
+        view.add_argument(
+            "-r", "--transitive", action="store_true", help="follow citations transitively"
+        )
+        view.add_argument("--format", choices=sorted(RENDERERS), default="text")
+        add_include_option(view)
+        view.set_defaults(func=run_references)
     notation = views.add_parser(
         "notation",
         help="the symbols declarations introduce, as JSON",
@@ -896,6 +921,38 @@ def _sync(args: argparse.Namespace, ok: dict[str, _Source]) -> int:
     if stale and args.check:
         print(f"{stale} snippet(s) differ from the theories", file=sys.stderr)
     return 1 if stale and args.check else 0
+
+
+def run_references(args: argparse.Namespace) -> int:
+    project = _load_dir(args.project, args.include)
+    result = _lookup(_entities(project, external=True), args.name, None)
+    if isinstance(result, str):
+        print(f"isar project {args.view}: {result}", file=sys.stderr)
+        return 1
+    references = References(project)
+    edges = references.cited_by if args.view == "callers" else references.cites
+    rows: list[dict[str, Cell]] = [
+        {
+            "name": e.qualified,
+            "kind": e.kind,
+            "command": e.command,
+            "path": display_path(e.path),
+            "line": e.line,
+            "depth": depth,
+        }
+        for e, depth in walk(edges, result.entity, args.transitive)
+    ]
+    columns = [
+        Column("name", "name"),
+        Column("kind", "kind"),
+        Column("command", "command"),
+        Column("path", "path"),
+        Column("line", "line", True),
+        Column("depth", "depth", True),
+    ]
+    title = f"{args.view.capitalize()} of {result.entity.qualified}"
+    RENDERERS[args.format]([Table(args.view, title, columns, rows)], sys.stdout)
+    return 0
 
 
 def _qualified_hit(entity: Entity, name: str) -> bool:

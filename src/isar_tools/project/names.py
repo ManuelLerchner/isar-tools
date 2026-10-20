@@ -636,14 +636,15 @@ def anchor(entity: Entity) -> str:
     return f"{entity.qualified}|{kind}" if kind and not parameter else ""
 
 
-def matches(entity: Entity, name: str) -> bool:
-    """Whether ``name`` (``base``, ``scope.base``, ``Theory.base``, or
-    ``Theory.scope.base``) refers to ``entity``."""
-    spellings = {
-        entity.name,
-        entity.qualified,
-        f"{entity.theory}.{entity.name}",
-    }
+def spellings(entity: Entity) -> set[str]:
+    """The names that refer to ``entity``: ``base``, ``scope.base``,
+    ``Theory.base``, and ``Theory.scope.base``."""
+    names = {entity.name, entity.qualified, f"{entity.theory}.{entity.name}"}
     if entity.scope:
-        spellings.add(f"{entity.scope}.{entity.name}")
-    return name in spellings
+        names.add(f"{entity.scope}.{entity.name}")
+    return names
+
+
+def matches(entity: Entity, name: str) -> bool:
+    """Whether ``name`` refers to ``entity``."""
+    return name in spellings(entity)
