@@ -8,6 +8,9 @@
   `axiomatization ... where` and `bnf_axiomatization` (`axiomatization`), `oracle`
   (`oracle`), and `[[smt_oracle]]` and `[[quick_and_dirty]]` not set to `false`
   (`smt-oracle`, `quick-and-dirty`).
+- `isar project callers NAME` and `isar project callees NAME` list the declarations
+  that cite NAME or that it cites, read from the source; `-r` follows them
+  transitively with the distance.
 
 ## 0.10.0 (2026-10-14)
 

@@ -87,6 +87,24 @@ A `~~/` file is read below the `ISABELLE_HOME` environment variable and printed
 back as `(* ~~/src/HOL/Orderings.thy *)`; without the variable, such entries are
 skipped with a note.
 
+## Citations
+
+```sh
+isar project callers gamma_state_update     # the declarations that cite it
+isar project callees -r branch_sound        # everything it rests on, with the distance
+isar project callers succ --format json     # rows with name, kind, path, line, depth
+```
+
+NAME is resolved as for `extract`. A declaration cites another when its text
+names it or a fact it derives (`f_def`, `f.simps`), and its theory imports the
+other's. Within one theory a name means what an earlier command declared, which
+shadows imported namesakes. A lemma, `assumes`, or `fixes` of a locale or class
+is cited by base name only from that locale or class or one extending it;
+`L.x` is a citation from anywhere. Read from the source like `isar check
+unused`, the graph misses what a method finds by itself, such as `[simp]`
+rules, and the facts of an interpretation (`q.fact`). Before changing a lemma,
+`callers -r` lists what may break.
+
 ## Notation
 
 ```sh

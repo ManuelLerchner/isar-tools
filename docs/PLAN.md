@@ -101,8 +101,10 @@ rewriting; `apply` to Isar conversion; theorem planning; language server;
 editor extensions; build orchestration; AFP management; Voblint-specific
 code-generation checks; thesis or website tooling.
 
-Complement, do not duplicate: `isabelle-linter`, `isabelle-query`,
-`isabelle-layout`, IsabelleBlueprint, editor/LSP projects.
+Complement, do not duplicate: `isabelle-linter`, `isabelle-layout`,
+IsabelleBlueprint, editor/LSP projects. Citation queries (`project callers`,
+`callees`) overlap `isabelle-query` on purpose: they reuse the parse `check
+unused` already makes.
 
 ## 4. Architecture
 
