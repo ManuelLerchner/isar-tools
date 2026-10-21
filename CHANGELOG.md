@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `unused-local` counts a citation inside a string or cartouche, such as method
+  text in `use h in \<open>simp add: g\<close>`.
+
+## 0.11.1 (2026-10-20)
+
 - `unused-local` no longer reports a fact whose name is bound again by a step that
   cites it, as in `have h: ... using h` or `note h = h[symmetric]`.
 

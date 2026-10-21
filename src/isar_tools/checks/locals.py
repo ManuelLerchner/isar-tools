@@ -1,5 +1,6 @@
 """``unused-local``: a named fact of a proof that nothing after it cites."""
 
+import re
 from bisect import bisect_left
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,9 @@ _STARTS = frozenset({"and", "where"})
 # Words that end the statements: the premises and parameters of `if` and
 # `for` are local to the fact's own proof.
 _ENDS = frozenset({"if", "for", "when"})
+# Tokens whose text can hold method text, and a word inside one.
+_QUOTED = frozenset({Kind.STRING, Kind.CARTOUCHE, Kind.ALT_STRING})
+_WORD = re.compile(r"[\w']+")
 # Commands that use the previous fact without its name.
 _CHAINING = frozenset({"hence", "thus", "moreover", "also"})
 
@@ -82,11 +86,17 @@ def _chains(theory: Theory, index: int) -> bool:
 
 def check_unused_locals(path: Path, theory: Theory, allowed: frozenset[str]) -> list[Finding]:
     # A local fact is cited by a word of formal text: `h`, `h(1)`, `h[OF x]`,
-    # and numerals such as `1`, which names of declarations cannot be.
+    # and numerals such as `1`, which names of declarations cannot be. Method
+    # text nests in cartouches (`use h in \<open>simp add: g\<close>`), so a word
+    # inside a string or cartouche counts too; a term's variable of the same
+    # name then hides a finding rather than invents one.
     cited: dict[str, list[int]] = {}
     for tok in theory.tokens:
         if tok.kind is Kind.WORD:
             cited.setdefault(tok.text, []).append(tok.start)
+        elif tok.kind in _QUOTED:
+            for m in _WORD.finditer(tok.text):
+                cited.setdefault(m.group(), []).append(tok.start + m.start())
     findings: list[Finding] = []
 
     def settle(binding: _Binding, end: int, rebinding: int = -1) -> None:
