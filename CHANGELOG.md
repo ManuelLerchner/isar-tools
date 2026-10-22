@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.2 (2026-10-21)
 
 - `unused-local` counts a citation inside a string or cartouche, such as method
   text in `use h in \<open>simp add: g\<close>`.
